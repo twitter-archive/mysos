@@ -62,6 +62,7 @@ class MysosTaskRunner(TaskRunner):
     self._popen = None  # The singleton task process started by '_task_control'.
 
     self._started = False  # Indicates whether start() has already been called.
+    self._stopping = False  # Indicates whether stop() has already been called.
     self._forked = threading.Event()  # Set when the task process is forked.
     self._exited = threading.Event()  # Set when the task process has exited.
     self._result = Queue.Queue()  # The returncode returned by the task process or an exception.
@@ -123,16 +124,23 @@ class MysosTaskRunner(TaskRunner):
 
       :param timeout: The timeout that the process should die before a hard SIGKILL is issued
                       (SIGTERM is used initially).
-      :return: True if an active runner is stopped, False if the runner is not started.
+      :return: True if an active runner is stopped, False if the runner is not started or already
+               stopping/stopped.
     """
-    log.info("Stopping runner")
-
     if not self._forked.is_set():
       log.warn("Cannot stop the runner because it's not started")
       return False
 
+    if self._stopping:
+      log.warn("The runner is already stopping/stopped")
+      return False
+
     with self._lock:
       assert self._popen
+
+      log.info("Stopping runner")
+      self._stopping = True
+
       try:
         log.info("Terminating process group: %s" % self._popen.pid)
         os.killpg(self._popen.pid, signal.SIGTERM)
