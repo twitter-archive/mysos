@@ -136,6 +136,8 @@ def main(args, options):
   else:
     log.info('Scheduler exited.')
 
+  app.shutdown(1)  # Mysos scheduler is supposed to be long-running thus the use of exit status 1.
+
 LogOptions.disable_disk_logging()
 LogOptions.set_stderr_log_level('google:INFO')
 
