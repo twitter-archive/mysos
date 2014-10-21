@@ -12,7 +12,7 @@ from twitter.mysos.scheduler.scheduler import MysosScheduler
 
 from kazoo.handlers.threading import SequentialThreadingHandler
 import mesos.interface
-from mesos.interface.mesos_pb2 import FrameworkInfo, DRIVER_STOPPED
+from mesos.interface.mesos_pb2 import DRIVER_STOPPED, FrameworkInfo
 import mesos.native
 from zake.fake_client import FakeClient
 from zake.fake_storage import FakeStorage

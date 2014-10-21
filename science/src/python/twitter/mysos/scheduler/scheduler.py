@@ -131,6 +131,8 @@ class MysosScheduler(mesos.interface.Scheduler):
 
     self._next_id = 0  # Next unique TaskID.
 
+    self.stopped = threading.Event()  # An event set when the scheduler is stopped.
+
   def _new_task_id(self, cluster_name):
     task_id = "mysos-" + cluster_name + "-" + str(self._next_id)
     self._next_id += 1
@@ -145,12 +147,15 @@ class MysosScheduler(mesos.interface.Scheduler):
 
     with self._lock:
       if name in self._clusters:
-        raise self.ClusterExists('Cluster already exists: %s' % name)
+        raise self.ClusterExists("Cluster '%s' already exists" % name)
+
+      if int(num_nodes) <= 0:
+        raise ValueError("Invalid number of cluster nodes: %s" % num_nodes)
 
       self._clusters[name] = MySQLCluster(
           name,
           ClusterManager(self._kazoo, posixpath.join(self._zk_root, name)),
-          num_nodes)
+          int(num_nodes))
 
   # --- Mesos methods. ---
   @logged
@@ -162,7 +167,7 @@ class MysosScheduler(mesos.interface.Scheduler):
     pass
 
   @logged
-  def disconnected(self):
+  def disconnected(self, driver):
     pass
 
   @logged
@@ -306,3 +311,4 @@ class MysosScheduler(mesos.interface.Scheduler):
   @logged
   def error(self, driver, message):
     log.error('Received error from mesos: %s' % message)
+    self.stopped.set()  # SchedulerDriver aborts when an error message is received.
