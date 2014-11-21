@@ -1,13 +1,11 @@
-import Queue
 import getpass
 import os
-import posixpath
 import subprocess
 
 from twitter.common import log
-from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
-from twitter.mysos.common import zookeeper
-from twitter.mysos.common.cluster import ClusterListener
+from twitter.common.concurrent import deadline
+from twitter.common.quantity import Amount, Time
+from twitter.mysos.common.cluster import get_cluster_path, wait_for_master
 from twitter.mysos.scheduler.scheduler import MysosScheduler
 
 from kazoo.handlers.threading import SequentialThreadingHandler
@@ -41,18 +39,8 @@ def test_scheduler_runs():
   zk_client.start()
 
   zk_url = "zk://fake_host/home/mysos/clusters"
-  zk_root = zookeeper.parse(zk_url)[2]
-
-  # Create a ClusterListener to monitor and verify the cluster state.
-  # TODO(jyx): Update ClusterListener to allow a None 'self_instance' so we don't need to fake it.
-  fake_instance = ServiceInstance(Endpoint("host", 51234))
-  master = Queue.Queue()
-  listener = ClusterListener(
-      zk_client,
-      posixpath.join(zk_root, "test_cluster"),
-      fake_instance,
-      master_callback=lambda x: master.put(x))
-  listener.start()
+  cluster_name = "test_cluster"
+  num_nodes = 3
 
   framework_info = FrameworkInfo(
       user=getpass.getuser(),
@@ -64,23 +52,22 @@ def test_scheduler_runs():
       os.path.abspath("dist/testing_mysos_executor.pex"),
       "./testing_mysos_executor.pex",
       zk_client,
-      zk_url)
+      zk_url,
+      election_timeout=Amount(40, Time.SECONDS))
 
   scheduler_driver = mesos.native.MesosSchedulerDriver(
       scheduler,
       framework_info,
       "local")
-
   scheduler_driver.start()
 
-  scheduler.create_cluster("test_cluster", 3)
+  scheduler.create_cluster(cluster_name, num_nodes)
 
-  # A random slave is promoted to be the master.
-  assert master.get(True, 40)
-
-  # Two slaves left.
-  slaves = [path for path in storage.paths.keys() if path.startswith(
-      "/home/mysos/clusters/test_cluster/slaves/member_")]
-  assert len(slaves) == 2
+  # A slave is promoted to be the master.
+  deadline(
+      lambda: wait_for_master(
+          get_cluster_path(zk_url, cluster_name),
+          zk_client),
+      Amount(40, Time.SECONDS))
 
   assert scheduler_driver.stop() == DRIVER_STOPPED

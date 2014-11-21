@@ -1,11 +1,23 @@
+import Queue
 import functools
 import posixpath
 import threading
 
 from twitter.common.zookeeper.serverset.endpoint import ServiceInstance
+from twitter.mysos.common import zookeeper
 
+from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError
 from kazoo.recipe.watchers import ChildrenWatch
+
+
+def get_cluster_path(zk_root, cluster_name):
+  """
+    :param zk_root: the root path for the mysos scheduler.
+    :param cluster_name: Name of the the cluster.
+    :return: The path for the cluster.
+  """
+  return posixpath.join(zk_root, cluster_name)
 
 
 class Cluster(object):
@@ -16,7 +28,7 @@ class Cluster(object):
     Only the master can write.
 
     The members of the cluster are maintained in two ZooKeeper groups: a slaves group and a master
-    group under the same 'root'. Slaves have unique member IDs backed by ZooKeeper's sequential
+    group under the same 'directory'. Slaves have unique member IDs backed by ZooKeeper's sequential
     ZNodes. When a slave is promoted to a master, it is moved (its ID preserved) from the slave
     group to the master group.
 
@@ -26,11 +38,11 @@ class Cluster(object):
   MASTER_GROUP = 'master'
   MEMBER_PREFIX = "member_"  # Use the prefix so the path conforms to the ServerSet convention.
 
-  def __init__(self, root):
+  def __init__(self, cluster_path):
     self.members = {}  # {ID : ServiceInstance} mappings for members of the cluster.
     self.master = None  # The master's member ID.
-    self.slaves_group = posixpath.join(root, self.SLAVES_GROUP)
-    self.master_group = posixpath.join(root, self.MASTER_GROUP)
+    self.slaves_group = posixpath.join(cluster_path, self.SLAVES_GROUP)
+    self.master_group = posixpath.join(cluster_path, self.MASTER_GROUP)
 
 
 # TODO(jyx): Handle errors e.g. sessions expirations and recoverable failures.
@@ -40,13 +52,13 @@ class ClusterManager(object):
     NOTE: ClusterManager is thread safe, i.e., it can be accessed from multiple threads at once.
   """
 
-  def __init__(self, client, root):
+  def __init__(self, client, cluster_path):
     """
       :param client: Kazoo client.
-      :param root: The root path for this cluster on ZooKeeper.
+      :param cluster_path: The path for this cluster on ZooKeeper.
     """
     self._client = client
-    self._cluster = Cluster(root)
+    self._cluster = Cluster(cluster_path)
     self._lock = threading.Lock()
     self._populate()
 
@@ -137,14 +149,14 @@ class ClusterListener(object):
 
   def __init__(self,
                client,
-               root,
-               self_instance,
+               cluster_path,
+               self_instance=None,
                promotion_callback=None,
                demotion_callback=None,
                master_callback=None):
     """
       :param client: Kazoo client.
-      :param root: The root path for this cluster on ZooKeeper.
+      :param cluster_path: The path for this cluster on ZooKeeper.
       :param self_instance: The local ServiceInstance associated with this listener.
       :param promotion_callback: Invoked when 'self_instance' is promoted.
       :param demotion_callback: Invoked when 'self_instance' is demoted.
@@ -153,8 +165,8 @@ class ClusterListener(object):
       order of events. Blocking the callback method means no future callbacks will be invoked.
     """
     self._client = client
-    self._cluster = Cluster(root)
-    self._self_content = ServiceInstance.pack(self_instance)
+    self._cluster = Cluster(cluster_path)
+    self._self_content = ServiceInstance.pack(self_instance) if self_instance else None
     self._master = None
     self._master_content = None
     self._promotion_callback = promotion_callback or (lambda: True)
@@ -168,9 +180,9 @@ class ClusterListener(object):
     ChildrenWatch(self._client, self._cluster.master_group, func=self._child_callback)
 
   def _swap(self, master, master_content):
-    i_was_master = self._master_content == self._self_content
+    i_was_master = self._self_content and self._master_content == self._self_content
     self._master, self._master_content = master, master_content
-    i_am_master = self._master_content == self._self_content
+    i_am_master = self._self_content and self._master_content == self._self_content
 
     # Invoke callbacks accordingly.
     # NOTE: No callbacks are invoked if there is currently no master and 'self_instance' wasn't the
@@ -199,3 +211,36 @@ class ClusterListener(object):
           functools.partial(self._data_callback, masters[0]))
     elif len(masters) == 0:
       self._swap(None, None)
+
+
+def resolve_master(cluster_url, master_callback, zk_client=None):
+  """
+    Resolve the MySQL cluster master's endpoint from the given URL for this cluster.
+    :param cluster_url: The ZooKeeper URL for this cluster.
+    :param master_callback: A callback method with one argument: the ServiceInstance for the elected
+                            master.
+    :param zk_client: Use a custom ZK client instead of Kazoo if specified.
+  """
+  try:
+    _, zk_servers, cluster_path = zookeeper.parse(cluster_url)
+  except Exception as e:
+    raise ValueError("Invalid cluster_url: %s" % e.message)
+
+  if not zk_client:
+    zk_client = KazooClient(zk_servers)
+    zk_client.start()
+
+  listener = ClusterListener(zk_client, cluster_path, None, master_callback=master_callback)
+  listener.start()
+
+
+def wait_for_master(cluster_url, zk_client=None):
+  """
+    Convenience function to wait for the master to be elected and return the master.
+    :param cluster_url: The ZooKeeper URL for this cluster.
+    :param zk_client: Use a custom ZK client instead of Kazoo if specified.
+    :return: The ServiceInstance for the elected master.
+  """
+  master = Queue.Queue()
+  resolve_master(cluster_url, lambda x: master.put(x), zk_client)
+  return master.get(True)

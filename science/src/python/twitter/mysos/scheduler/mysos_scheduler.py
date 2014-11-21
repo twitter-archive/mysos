@@ -4,6 +4,7 @@ from twitter.common import app, log
 from twitter.common.exceptions import ExceptionalThread
 from twitter.common.http import HttpServer
 from twitter.common.log.options import LogOptions
+from twitter.common.quantity.parse_simple import InvalidTime, parse_time
 from twitter.mysos.common import zookeeper
 
 from .scheduler import MysosScheduler
@@ -62,6 +63,17 @@ app.add_option(
 )
 
 
+# TODO(jyx): This could also be made a per-cluster configuration.
+app.add_option(
+    '--election_timeout',
+    dest='election_timeout',
+    default='60s',
+    help='The amount of time the scheduler waits for all slaves to respond during a MySQL master '
+         'election, e.g., 60s. After the timeout the master is elected from only the slaves that '
+         'have responded',
+)
+
+
 FRAMEWORK_NAME = 'mysos'
 
 
@@ -83,6 +95,11 @@ def main(args, options):
 
   if options.zk_url is None:
     app.error('Must specify --zk_url')
+
+  try:
+    election_timeout = parse_time(options.election_timeout)
+  except InvalidTime as e:
+    app.error(e.message)
 
   options.executor_uri = os.path.abspath(options.executor_uri)
 
@@ -108,7 +125,8 @@ def main(args, options):
       options.executor_uri,
       options.executor_cmd,
       kazoo,
-      options.zk_url)
+      options.zk_url,
+      election_timeout)
 
   scheduler_driver = mesos.native.MesosSchedulerDriver(
     scheduler,

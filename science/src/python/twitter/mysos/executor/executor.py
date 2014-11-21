@@ -1,3 +1,5 @@
+import json
+
 from twitter.common import log
 from twitter.common.concurrent import defer
 from twitter.mysos.common.decorators import logged
@@ -81,7 +83,29 @@ class MysosExecutor(mesos.interface.Executor):
 
   @logged
   def frameworkMessage(self, driver, message):
-    pass
+    if not self._runner:
+      log.info('Ignoring framework message because no task is running yet')
+      return
+
+    defer(lambda: self._framework_message(message))
+
+  def _framework_message(self, message):
+    master_epoch = message  # The log position request is for electing the master of this 'epoch'.
+    try:
+      position = self._runner.get_log_position()
+      log.info('Obtained log position %s for epoch %s' % (position, master_epoch))
+
+      assert self._driver
+
+      # TODO(jyx): Define the message in ProtoBuf or Thrift.
+      self._driver.sendFrameworkMessage(json.dumps({
+          'epoch': master_epoch,  # Send the epoch back without parsing it.
+          'position': position
+      }))
+    except TaskError as e:
+      # Log the error and do not reply to the framework.
+      log.error("Committing suicide due to failure to process framework message: %s" % e)
+      self._kill()
 
   @logged
   def killTask(self, driver, taskId):
@@ -94,7 +118,7 @@ class MysosExecutor(mesos.interface.Executor):
     if self._runner:
       self._runner.stop()  # It could be already stopped. If so, self._runner.stop() is a no-op.
 
-    assert self._driver is not None
+    assert self._driver
 
     # TODO(jyx): Fix https://issues.apache.org/jira/browse/MESOS-243.
     self._driver.stop()

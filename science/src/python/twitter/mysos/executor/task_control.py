@@ -50,6 +50,6 @@ class TaskControl(Interface):
   def get_log_position(self):
     """
       Retrieve the log position from mysqld.
-      :return: The log position.
+      :return: The log position, None if it cannot be obtained.
     """
     pass

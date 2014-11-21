@@ -104,6 +104,7 @@ class MysosTaskRunner(TaskRunner):
       # Store the process so we can kill it if necessary.
       try:
         self._popen = self._task_control.start()
+        # Only start listening to ZK events after the task subprocess has been successfully started.
         self._listener.start()
       except CalledProcessError as e:
         self._result.put(TaskError("Failed to start MySQL task: %s" % e))
@@ -169,7 +170,7 @@ class MysosTaskRunner(TaskRunner):
 
   def get_log_position(self):
     """
-      Get the log position of the MySQL slave.
+      Get the log position of the MySQL slave. Return None if it cannot be obtained.
     """
     try:
       log_position = self._task_control.get_log_position()

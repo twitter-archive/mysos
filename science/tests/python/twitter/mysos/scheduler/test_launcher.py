@@ -1,8 +1,13 @@
+import json
 import os
+import threading
 import unittest
 
 from twitter.common import log
+from twitter.common.concurrent import deadline
+from twitter.common.quantity import Amount, Time
 from twitter.mysos.scheduler.launcher import create_resources, LauncherError, MySQLClusterLauncher
+from twitter.mysos.common.cluster import get_cluster_path, wait_for_master
 from twitter.mysos.common.testing import Fake
 
 from kazoo.handlers.threading import SequentialThreadingHandler
@@ -36,88 +41,132 @@ class TestLauncher(unittest.TestCase):
     self._offer.slave_id.value = "slave_id_0"
     self._offer.hostname = "localhost"
 
-  def test_launch_cluster_all_nodes_successful(self):
-    num_nodes = 3
-    launcher = MySQLClusterLauncher(
-        "zk://host/mysos/test",
-        self._zk_client,
-        "cluster0",
-        num_nodes,
-        "cmd.sh",
-        "./executor.pex")
-
-    resources = create_resources(cpus=4, mem=1024, ports=set([10000, 10001, 10002]))
+    # Enough memory and ports to fit three tasks.
+    resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000, 10001, 10002]))
     self._offer.resources.extend(resources)
 
-    for i in range(num_nodes):
-      task_id, remaining = launcher.launch(self._driver, self._offer)
+    self._framework_user = "framework_user"
+
+    # Some tests use the default launcher; some don't.
+    self._num_nodes = 3
+    self._cluster_name = "cluster0"
+    self._zk_url = "zk://host/mysos/test"
+    self._launcher = MySQLClusterLauncher(
+        self._zk_url,
+        self._zk_client,
+        self._cluster_name,
+        self._num_nodes,
+        "./executor.pex",
+        "cmd.sh",
+        Amount(5, Time.SECONDS),
+        query_interval=Amount(150, Time.MILLISECONDS))  # Short interval.
+
+    self._elected = threading.Event()
+
+    self._launchers = [self._launcher]  # See tearDown().
+
+  def tearDown(self):
+    for launcher in self._launchers:
+      if launcher._elector:
+        launcher._elector.abort()  # Abort the thread even if the election is pending.
+        launcher._elector.join()
+
+  def test_launch_cluster_all_nodes_successful(self):
+    for i in range(self._num_nodes):
+      task_id, remaining = self._launcher.launch(self._driver, self._offer)
       del self._offer.resources[:]
       self._offer.resources.extend(remaining)
       assert task_id == "mysos-cluster0-%s" % i
 
     tasks = self._driver.method_calls["launchTasks"]
-    assert len(tasks) == num_nodes
+    assert len(tasks) == self._num_nodes
 
     # No new tasks are launched.
-    assert launcher.launch(self._driver, self._offer)[0] is None
-    assert len(self._driver.method_calls["launchTasks"]) == num_nodes
+    assert self._launcher.launch(self._driver, self._offer)[0] is None
+    assert len(self._driver.method_calls["launchTasks"]) == self._num_nodes
 
     # All 3 nodes have successfully started.
     status = mesos_pb2.TaskStatus()
     status.state = mesos_pb2.TASK_RUNNING  # Valid state.
-    for i in range(num_nodes):
+    status.slave_id.value = self._offer.slave_id.value
+    for i in range(self._num_nodes):
       status.task_id.value = "mysos-cluster0-%s" % i
-      launcher.status_update(status)
+      self._launcher.status_update(status)
 
-    # One master is elected.
-    master = "/mysos/test/cluster0/master/member_"
-    assert len([x for x in self._storage.paths.keys() if x.startswith(master)]) == 1
+    deadline(
+        lambda: wait_for_master(
+            get_cluster_path(self._zk_url, self._cluster_name),
+            self._zk_client),
+        Amount(5, Time.SECONDS))
+
+    # The first slave is elected.
+    assert "/mysos/test/cluster0/master/member_0000000000" in self._storage.paths
+    # Two slaves.
+    assert len([x for x in self._storage.paths.keys() if x.startswith(
+        "/mysos/test/cluster0/slaves/member_")]) == 2
 
   def test_launch_cluster_insufficient_resources(self):
-    num_nodes = 3
-    launcher = MySQLClusterLauncher(
-        "zk://host/mysos/test",
-        self._zk_client,
-        "cluster0",
-        num_nodes,
-        "cmd.sh",
-        "./executor.pex")
-
-    resources = create_resources(cpus=4, mem=1024, ports=set([10000, 100001]))
+    """All but one slave in the slave are launched successfully."""
+    del self._offer.resources[:]
+    resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000, 10001]))
     self._offer.resources.extend(resources)
 
     # There is one fewer port than required to launch the entire cluster.
-    for i in range(num_nodes - 1):
-      task_id, remaining = launcher.launch(self._driver, self._offer)
+    for i in range(self._num_nodes - 1):
+      task_id, remaining = self._launcher.launch(self._driver, self._offer)
       del self._offer.resources[:]
       self._offer.resources.extend(remaining)
       assert task_id == "mysos-cluster0-%s" % i
 
     tasks = self._driver.method_calls["launchTasks"]
-    assert len(tasks) == num_nodes - 1
+    assert len(tasks) == self._num_nodes - 1
 
     # The final task cannot get launched.
-    assert launcher.launch(self._driver, self._offer)[0] is None
-    assert len(self._driver.method_calls["launchTasks"]) == num_nodes - 1
+    assert self._launcher.launch(self._driver, self._offer)[0] is None
+    assert len(self._driver.method_calls["launchTasks"]) == self._num_nodes - 1
+
+    # The two nodes have successfully started.
+    status = mesos_pb2.TaskStatus()
+    status.state = mesos_pb2.TASK_RUNNING  # Valid state.
+    status.slave_id.value = self._offer.slave_id.value
+    for i in range(self._num_nodes - 1):
+      status.task_id.value = "mysos-cluster0-%s" % i
+      self._launcher.status_update(status)
+
+    deadline(
+        lambda: wait_for_master(
+            get_cluster_path(self._zk_url, self._cluster_name),
+            self._zk_client),
+        Amount(5, Time.SECONDS))
+
+    # The first slave is elected.
+    assert "/mysos/test/cluster0/master/member_0000000000" in self._storage.paths
+    # One slave.
+    assert len([x for x in self._storage.paths.keys() if x.startswith(
+      "/mysos/test/cluster0/slaves/member_")]) == 1
 
   def test_two_launchers(self):
+    """Two launchers share resources and launch their clusters successfully."""
     launchers = [
       MySQLClusterLauncher(
-          "zk://host/mysos/test",
+          self._zk_url,
           self._zk_client,
           "cluster0",
           1,
+          "./executor.pex",
           "cmd.sh",
-          "./executor.pex"),
+          Amount(5, Time.SECONDS)),
       MySQLClusterLauncher(
-          "zk://host/mysos/test",
+        self._zk_url,
           self._zk_client,
           "cluster1",
           2,
+          "./executor.pex",
           "cmd.sh",
-          "./executor.pex")]
+          Amount(5, Time.SECONDS))]
+    self._launchers.extend(launchers)
 
-    resources = create_resources(cpus=4, mem=1024, ports=set([10000, 10001, 10002]))
+    resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000, 10001, 10002]))
     self._offer.resources.extend(resources)
 
     # Three nodes in total across two clusters.
@@ -135,16 +184,19 @@ class TestLauncher(unittest.TestCase):
     assert len(tasks) == 3
 
   def test_invalid_status_update(self):
+    """Launcher raises an exception when an invalid status is received."""
     num_nodes = 1
     launcher = MySQLClusterLauncher(
-        "zk://host/mysos/test",
+        self._zk_url,
         self._zk_client,
-        "cluster0",
+        self._cluster_name,
         num_nodes,
+        "./executor.pex",
         "cmd.sh",
-        "./executor.pex")
+        Amount(5, Time.SECONDS))
+    self._launchers.append(launcher)
 
-    resources = create_resources(cpus=4, mem=1024, ports=set([10000]))
+    resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000]))
     self._offer.resources.extend(resources)
 
     task_id, _ = launcher.launch(self._driver, self._offer)
@@ -164,32 +216,113 @@ class TestLauncher(unittest.TestCase):
       launcher.status_update(status)
 
   def test_terminal_status_update(self):
+    """Launcher reacts to terminated task by launching a new one."""
     num_nodes = 1
     launcher = MySQLClusterLauncher(
-        "zk://host/mysos/test",
+        self._zk_url,
         self._zk_client,
         "cluster0",
         num_nodes,
+        "./executor.pex",
         "cmd.sh",
-        "./executor.pex")
+        Amount(1, Time.SECONDS))
+    self._launchers.append(launcher)
 
-    resources = create_resources(cpus=4, mem=1024, ports=set([10000]))
+    resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000]))
     self._offer.resources.extend(resources)
 
     task_id, _ = launcher.launch(self._driver, self._offer)
     assert task_id == "mysos-cluster0-0"
 
-    tasks = self._driver.method_calls["launchTasks"]
-    assert len(tasks) == num_nodes
+    launched = self._driver.method_calls["launchTasks"]
+    assert len(launched) == num_nodes
 
     status = mesos_pb2.TaskStatus()
     status.task_id.value = task_id
     status.state = mesos_pb2.TASK_RUNNING
     launcher.status_update(status)
 
-    assert launcher._cluster.running_tasks == 1
+    assert len(launcher._cluster.running_tasks) == 1
 
     status.state = mesos_pb2.TASK_LOST
     launcher.status_update(status)
 
-    assert launcher._cluster.running_tasks == 0
+    assert len(launcher._cluster.running_tasks) == 0
+
+    task_id, _ = launcher.launch(self._driver, self._offer)
+    assert task_id == "mysos-cluster0-1"
+
+    launched = self._driver.method_calls["launchTasks"]
+    assert len(launched) == num_nodes + 1  # One task is relaunched to make up for the lost one.
+
+  def test_master_failover(self):
+    for i in range(self._num_nodes):
+      task_id, remaining = self._launcher.launch(self._driver, self._offer)
+      del self._offer.resources[:]
+      self._offer.resources.extend(remaining)
+      assert task_id == "mysos-cluster0-%s" % i
+
+    tasks = self._driver.method_calls["launchTasks"]
+    assert len(tasks) == self._num_nodes
+
+    # All 3 nodes have successfully started.
+    status = mesos_pb2.TaskStatus()
+    status.state = mesos_pb2.TASK_RUNNING
+    status.slave_id.value = self._offer.slave_id.value
+
+    for i in range(self._num_nodes):
+      status.task_id.value = "mysos-cluster0-%s" % i
+      self._launcher.status_update(status)
+
+    # No log positions queries are sent for the first epoch.
+    assert "sendFrameworkMessage" not in self._driver.method_calls
+
+    # Wait for the election to complete.
+    deadline(
+        lambda: wait_for_master(
+            get_cluster_path(self._zk_url, self._cluster_name),
+            self._zk_client),
+        Amount(5, Time.SECONDS))
+
+    # The first slave is elected.
+    assert "/mysos/test/cluster0/master/member_0000000000" in self._storage.paths
+
+    # Now fail the master task.
+    status.task_id.value = "mysos-cluster0-0"
+    status.state = mesos_pb2.TASK_FAILED
+    self._launcher.status_update(status)
+
+    assert len(self._launcher._cluster.running_tasks) == 2
+
+    # Log positions queries are sent.
+    self._launcher._elector._elect()
+    assert len(self._driver.method_calls["sendFrameworkMessage"]) >= 2
+
+    for i in range(1, self._num_nodes):
+      self._launcher.framework_message(
+          "mysos-cluster0-%s" % i,
+          self._offer.slave_id.value,
+          json.dumps(dict(epoch=1, position=str(i))))
+
+    # Wait for the election to complete.
+    deadline(
+        lambda: wait_for_master(
+            get_cluster_path(self._zk_url, self._cluster_name),
+            self._zk_client),
+        Amount(5, Time.SECONDS))
+
+    # The slave with the highest position is elected.
+    assert "/mysos/test/cluster0/master/member_0000000002" in self._storage.paths
+
+    assert len(self._launcher._cluster.running_tasks) == 2
+
+    # When a new offer comes in, a new task is launched.
+    del self._offer.resources[:]
+    resources = create_resources(cpus=1, mem=512, ports=set([10000]))
+    self._offer.resources.extend(resources)
+    task_id, _ = self._launcher.launch(self._driver, self._offer)
+    assert task_id == "mysos-cluster0-3"
+
+    launched = self._driver.method_calls["launchTasks"]
+    # One task is relaunched to make up for the failed one.
+    assert len(launched) == self._num_nodes + 1

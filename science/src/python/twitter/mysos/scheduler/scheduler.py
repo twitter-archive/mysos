@@ -16,7 +16,7 @@ class MysosScheduler(mesos.interface.Scheduler):
   class Error(Exception): pass
   class ClusterExists(Error): pass
 
-  def __init__(self, framework_user, executor_uri, executor_cmd, kazoo, zk_url):
+  def __init__(self, framework_user, executor_uri, executor_cmd, kazoo, zk_url, election_timeout):
     """
       :param framework_user: The Unix user that Mysos executor runs as.
       :param executor_uri: URI for the Mysos executor pex file.
@@ -30,6 +30,7 @@ class MysosScheduler(mesos.interface.Scheduler):
     self._framework_user = framework_user
     self._executor_uri = executor_uri
     self._executor_cmd = executor_cmd
+    self._election_timeout = election_timeout
 
     self._driver = None  # Will be set by registered().
 
@@ -63,7 +64,8 @@ class MysosScheduler(mesos.interface.Scheduler):
           name,
           int(num_nodes),
           self._executor_uri,
-          self._executor_cmd)
+          self._executor_cmd,
+          self._election_timeout)
 
   def _stop(self):
     """Stop the scheduler."""
@@ -111,18 +113,20 @@ class MysosScheduler(mesos.interface.Scheduler):
     with self._lock:
       # Forward the status update to the corresponding launcher.
       task_id = status.task_id.value
-      # TODO(jyx): Can the task_ids be invalid?
-      cluster_name = self._tasks[task_id]
-      launcher = self._launchers[cluster_name]
+      launcher = self._get_launcher_by_task_id(task_id)
       try:
         launcher.status_update(status)
       except LauncherError as e:
-        log.error("Status update failed due to scheduler error: %s" % e.message)
+        log.error("Status update failed due to launcher error: %s" % e.message)
         self._stop()
 
   @logged
   def frameworkMessage(self, driver, executorId, slaveId, message):
-    pass
+    log.info('Received framework message %s' % message)
+    task_id = executorId.value  # task_id == executor_id in Mysos.
+
+    launcher = self._get_launcher_by_task_id(task_id)
+    launcher.framework_message(task_id, slaveId.value, message)
 
   @logged
   def slaveLost(self, driver, slaveId):
@@ -133,6 +137,13 @@ class MysosScheduler(mesos.interface.Scheduler):
   def error(self, driver, message):
     log.error('Received error from mesos: %s' % message)
     self._stop()  # SchedulerDriver aborts when an error message is received.
+
+  def _get_launcher_by_task_id(self, task_id):
+    # TODO(jyx): Currently we don't delete entries from 'self._tasks' so a mapping can always be
+    # found but we should clean it up when tasks die.
+    assert task_id in self._tasks
+    cluster_name = self._tasks[task_id]
+    return self._launchers[cluster_name]
 
 
 def shuffled(li):

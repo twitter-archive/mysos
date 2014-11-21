@@ -1,4 +1,5 @@
 import os
+import random
 import subprocess
 import threading
 
@@ -12,7 +13,7 @@ class FakeTaskControlProvider(TaskControlProvider):
   """
 
   def from_task(self, task):
-    return FakeTaskControl()
+    return FakeTaskControl(position=random.randint(0, 100))
 
 
 class FakeTaskControl(TaskControl):
