@@ -14,7 +14,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.define "devcluster" do |dev|
     dev.vm.network :private_network, ip: "192.168.33.7"
     dev.vm.provider :virtualbox do |vb|
-      vb.customize ["modifyvm", :id, "--memory", "1024"]
+      vb.customize ["modifyvm", :id, "--memory", "1536"]
     end
     dev.vm.synced_folder "../dist", "/mysos/dist"
     dev.vm.provision "shell", path: "vagrant/provision-dev-cluster.sh"

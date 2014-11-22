@@ -48,7 +48,7 @@ def test_scheduler_runs():
       checkpoint=False)
 
   scheduler = MysosScheduler(
-      "fake_user",
+      getpass.getuser(),
       os.path.abspath("dist/testing_mysos_executor.pex"),
       "./testing_mysos_executor.pex",
       zk_client,
@@ -61,7 +61,7 @@ def test_scheduler_runs():
       "local")
   scheduler_driver.start()
 
-  scheduler.create_cluster(cluster_name, num_nodes)
+  scheduler.create_cluster(cluster_name, "mysql_user", num_nodes)
 
   # A slave is promoted to be the master.
   deadline(

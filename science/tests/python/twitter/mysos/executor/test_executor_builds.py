@@ -1,15 +1,11 @@
-import subprocess
-
-
-def build_and_execute_pex_target(target, binary):
-  assert subprocess.call(["./pants", target]) == 0
-
-  p = subprocess.Popen([binary, "--help"], stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
-  out, err = p.communicate()
-  assert p.returncode == 1
-  assert out.startswith('Options'), 'Unexpected build output: %s' % out
+from twitter.mysos.common.testing import build_and_execute_pex_target
 
 
 def test_testing_mysos_executor_build():
   build_and_execute_pex_target('tests/python/twitter/mysos/executor:testing_mysos_executor',
                                'dist/testing_mysos_executor.pex')
+
+
+def test_mysos_executor_build():
+  build_and_execute_pex_target('src/python/twitter/mysos/executor:mysos_executor',
+                               'dist/mysos_executor.pex')

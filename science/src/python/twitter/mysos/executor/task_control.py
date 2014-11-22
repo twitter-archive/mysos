@@ -5,7 +5,7 @@ from twitter.common.lang import Interface
 
 class TaskControlProvider(Interface):
   @abstractmethod
-  def from_task(self, task):
+  def from_task(self, task, sandbox):
     pass
 
 

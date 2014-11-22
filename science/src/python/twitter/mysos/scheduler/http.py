@@ -1,3 +1,5 @@
+import json
+
 from twitter.common.http import HttpServer, route
 
 from .scheduler import MysosScheduler
@@ -13,11 +15,19 @@ class MysosServer(HttpServer):
   @route('/create/<clustername>', method=['POST'])
   def create(self, clustername):
     """Create a db cluster."""
+    cluster_name = clustername  # For naming consistency.
     num_nodes = bottle.request.forms.get('num_nodes', default=3)
+    cluster_user = bottle.request.forms.get('cluster_user', default=None)
 
     try:
-      self._scheduler.create_cluster(clustername, num_nodes)
+      cluster_zk_url, cluster_password = self._scheduler.create_cluster(
+          cluster_name,
+          cluster_user,
+          num_nodes)
+      return json.dumps(dict(cluster_url=cluster_zk_url, cluster_password=cluster_password))
     except MysosScheduler.ClusterExists as e:
       raise bottle.HTTPResponse(e.message, status=409)
+    except MysosScheduler.InvalidUser as e:
+      raise bottle.HTTPResponse(e.message, status=400)
     except ValueError as e:
       raise bottle.HTTPResponse(e.message, status=400)

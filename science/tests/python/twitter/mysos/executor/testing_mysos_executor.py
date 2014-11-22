@@ -1,4 +1,5 @@
 import json
+import os
 import posixpath
 import socket
 
@@ -14,6 +15,9 @@ import mesos.native
 from zake.fake_client import FakeClient
 
 
+SANDBOX_ROOT = os.path.join(os.path.realpath('.'), "sandbox")
+
+
 class TestingTaskRunnerProvider(TaskRunnerProvider):
   """
     Creates a MysosTaskRunner with FakeTaskControl for testing purposes.
@@ -23,7 +27,7 @@ class TestingTaskRunnerProvider(TaskRunnerProvider):
   def __init__(self, task_control_provider):
     self._task_control_provider = task_control_provider
 
-  def from_task(self, task):
+  def from_task(self, task, sandbox):
     data = json.loads(task.data)
     cluster_name, port, zk_url = data['cluster'], data['port'], data['zk_url']
 
@@ -32,7 +36,7 @@ class TestingTaskRunnerProvider(TaskRunnerProvider):
     zk_client = FakeClient()
     zk_client.start()
     self_instance = ServiceInstance(Endpoint(socket.gethostbyname(socket.gethostname()), port))
-    task_control = self._task_control_provider.from_task(task)
+    task_control = self._task_control_provider.from_task(task, sandbox)
 
     return MysosTaskRunner(
         self_instance,
@@ -44,7 +48,7 @@ class TestingTaskRunnerProvider(TaskRunnerProvider):
 def main(args, options):
   log.info('Starting testing mysos executor')
 
-  executor = MysosExecutor(TestingTaskRunnerProvider(FakeTaskControlProvider()))
+  executor = MysosExecutor(TestingTaskRunnerProvider(FakeTaskControlProvider()), SANDBOX_ROOT)
   driver = mesos.native.MesosExecutorDriver(executor)
   driver.run()
 

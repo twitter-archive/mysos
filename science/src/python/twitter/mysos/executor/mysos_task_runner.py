@@ -1,9 +1,7 @@
 import Queue
 import json
 import os
-import posixpath
 import signal
-import socket
 from subprocess import CalledProcessError
 import threading
 
@@ -11,7 +9,7 @@ from twitter.common import log
 from twitter.common.concurrent import defer
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
 
-from twitter.mysos.common.cluster import ClusterListener
+from twitter.mysos.common.cluster import ClusterListener, get_cluster_path
 from twitter.mysos.common.zookeeper import parse
 
 from .task_runner import TaskError, TaskRunner, TaskRunnerProvider
@@ -24,19 +22,23 @@ class MysosTaskRunnerProvider(TaskRunnerProvider):
   def __init__(self, task_control_provider):
     self._task_control_provider = task_control_provider
 
-  def from_task(self, task):
+  def from_task(self, task, sandbox):
     data = json.loads(task.data)
-    cluster_name, port, zk_url = data['cluster'], data['port'], data['zk_url']
+    cluster_name, host, port, zk_url = data['cluster'], data['host'], data['port'], data['zk_url']
     _, servers, path = parse(zk_url)
     kazoo = KazooClient(servers)
     kazoo.start()
-    self_instance = ServiceInstance(Endpoint(socket.gethostbyname(socket.gethostname()), port))
-    task_control = self._task_control_provider.from_task(task)
+    self_instance = ServiceInstance(Endpoint(host, port))
+
+    try:
+      task_control = self._task_control_provider.from_task(task, sandbox)
+    except TaskControl.Error as e:
+      raise TaskError(e.message)
 
     return MysosTaskRunner(
         self_instance,
         kazoo,
-        posixpath.join(path, cluster_name),
+        get_cluster_path(path, cluster_name),
         task_control)
 
 

@@ -54,11 +54,15 @@ class TestLauncher(unittest.TestCase):
     self._launcher = MySQLClusterLauncher(
         self._zk_url,
         self._zk_client,
+        self._framework_user,
         self._cluster_name,
+        "user",
+        "pass",
         self._num_nodes,
         "./executor.pex",
         "cmd.sh",
         Amount(5, Time.SECONDS),
+        "/etc/mysos/admin_keyfile.yml",
         query_interval=Amount(150, Time.MILLISECONDS))  # Short interval.
 
     self._elected = threading.Event()
@@ -151,19 +155,27 @@ class TestLauncher(unittest.TestCase):
       MySQLClusterLauncher(
           self._zk_url,
           self._zk_client,
+          self._framework_user,
           "cluster0",
+          "user0",
+          "pass0",
           1,
           "./executor.pex",
           "cmd.sh",
-          Amount(5, Time.SECONDS)),
+          Amount(5, Time.SECONDS),
+          "/etc/mysos/admin_keyfile.yml"),
       MySQLClusterLauncher(
         self._zk_url,
           self._zk_client,
+          self._framework_user,
           "cluster1",
+          "user1",
+          "pass1",
           2,
           "./executor.pex",
           "cmd.sh",
-          Amount(5, Time.SECONDS))]
+          Amount(5, Time.SECONDS),
+          "/etc/mysos/admin_keyfile.yml")]
     self._launchers.extend(launchers)
 
     resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000, 10001, 10002]))
@@ -189,11 +201,15 @@ class TestLauncher(unittest.TestCase):
     launcher = MySQLClusterLauncher(
         self._zk_url,
         self._zk_client,
+        self._framework_user,
         self._cluster_name,
+        "user",
+        "pass",
         num_nodes,
         "./executor.pex",
         "cmd.sh",
-        Amount(5, Time.SECONDS))
+        Amount(5, Time.SECONDS),
+        "/etc/mysos/admin_keyfile.yml")
     self._launchers.append(launcher)
 
     resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000]))
@@ -221,11 +237,15 @@ class TestLauncher(unittest.TestCase):
     launcher = MySQLClusterLauncher(
         self._zk_url,
         self._zk_client,
+        self._framework_user,
         "cluster0",
+        "user",
+        "pass",
         num_nodes,
         "./executor.pex",
         "cmd.sh",
-        Amount(1, Time.SECONDS))
+        Amount(1, Time.SECONDS),
+        "/etc/mysos/admin_keyfile.yml")
     self._launchers.append(launcher)
 
     resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000]))

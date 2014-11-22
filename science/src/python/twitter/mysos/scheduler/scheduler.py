@@ -1,9 +1,11 @@
 from collections import OrderedDict
 import random
 import threading
+import string
 
 from twitter.common import log
 from twitter.mysos.common import zookeeper
+from twitter.mysos.common.cluster import get_cluster_path
 from twitter.mysos.common.decorators import logged
 
 from .launcher import LauncherError, MySQLClusterLauncher
@@ -15,8 +17,17 @@ class MysosScheduler(mesos.interface.Scheduler):
 
   class Error(Exception): pass
   class ClusterExists(Error): pass
+  class InvalidUser(Error): pass
 
-  def __init__(self, framework_user, executor_uri, executor_cmd, kazoo, zk_url, election_timeout):
+  def __init__(
+      self,
+      framework_user,
+      executor_uri,
+      executor_cmd,
+      kazoo,
+      zk_url,
+      election_timeout,
+      admin_keypath):
     """
       :param framework_user: The Unix user that Mysos executor runs as.
       :param executor_uri: URI for the Mysos executor pex file.
@@ -31,6 +42,7 @@ class MysosScheduler(mesos.interface.Scheduler):
     self._executor_uri = executor_uri
     self._executor_cmd = executor_cmd
     self._election_timeout = election_timeout
+    self._admin_keypath = admin_keypath
 
     self._driver = None  # Will be set by registered().
 
@@ -46,26 +58,44 @@ class MysosScheduler(mesos.interface.Scheduler):
     self.stopped = threading.Event()  # An event set when the scheduler is stopped.
 
   # --- Public interface. ---
-  def create_cluster(self, name, num_nodes):
+  def create_cluster(self, cluster_name, cluster_user, num_nodes):
     """
-      :param name: Name of the cluster.
+      :param cluster_name: Name of the cluster.
+      :param cluster_user: The user account on MySQL server.
       :param num_nodes: Number of nodes in the cluster.
+
+      :return: a tuple of the following:
+        - ZooKeeper URL for this Mysos cluster that can be used to resolve MySQL cluster info.
+        - The password for the specified user of the specified cluster.
+
+      TODO(jyx): We can expose the cluster-level ZooKeeper URL via an 'info' endpoint.
     """
     with self._lock:
-      if name in self._launchers:
-        raise self.ClusterExists("Cluster '%s' already exists" % name)
+      if cluster_name in self._launchers:
+        raise self.ClusterExists("Cluster '%s' already exists" % cluster_name)
+
+      if not cluster_user:
+        raise self.InvalidUser('Invalid user name: %s' % cluster_user)
 
       if int(num_nodes) <= 0:
         raise ValueError("Invalid number of cluster nodes: %s" % num_nodes)
 
-      self._launchers[name] = MySQLClusterLauncher(
+      cluster_password = gen_password()
+
+      self._launchers[cluster_name] = MySQLClusterLauncher(
           self._zk_url,
           self._kazoo,
-          name,
+          self._framework_user,
+          cluster_name,
+          cluster_user,
+          cluster_password,
           int(num_nodes),
           self._executor_uri,
           self._executor_cmd,
-          self._election_timeout)
+          self._election_timeout,
+          self._admin_keypath)
+
+      return get_cluster_path(self._zk_url, cluster_name), cluster_password
 
   def _stop(self):
     """Stop the scheduler."""
@@ -151,3 +181,11 @@ def shuffled(li):
   copy = li[:]
   random.shuffle(copy)
   return copy
+
+
+def gen_password():
+  """Return a randomly-generated password of 21 characters."""
+  return ''.join(random.choice(
+      string.ascii_uppercase +
+      string.ascii_lowercase +
+      string.digits) for _ in range(21))

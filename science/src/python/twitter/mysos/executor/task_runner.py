@@ -13,7 +13,7 @@ class TaskRunner(Interface):
 
 class TaskRunnerProvider(Interface):
   @abstractmethod
-  def from_task(self, task):
+  def from_task(self, task, sandbox):
     """
       Factory method that creates a TaskRunner instance from 'task' (TaskInfo).
     """

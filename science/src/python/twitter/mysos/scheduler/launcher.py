@@ -1,12 +1,11 @@
 import json
-import posixpath
 import random
 import threading
 
 from twitter.common import log
 from twitter.common.quantity import Amount, Time
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
-from twitter.mysos.common.cluster import ClusterManager
+from twitter.mysos.common.cluster import ClusterManager, get_cluster_path
 from twitter.mysos.common import zookeeper
 
 from .elector import MySQLMasterElector
@@ -15,8 +14,8 @@ import mesos.interface.mesos_pb2 as mesos_pb2
 
 
 # TODO(jyx): Replace this when we start taking tasks from an HTTP API.
-TASK_CPUS = 1
-TASK_MEM = 128
+TASK_CPUS = 0.1
+TASK_MEM = 512
 
 
 class LauncherError(Exception): pass
@@ -36,11 +35,15 @@ class MySQLClusterLauncher(object):
       self,
       zk_url,
       kazoo,
+      framework_user,
       cluster_name,
+      cluster_user,
+      cluster_password,
       num_nodes,
       executor_uri,
       executor_cmd,
       election_timeout,
+      admin_keypath,
       query_interval=Amount(1, Time.SECONDS)):
     """
       :param query_interval: See MySQLMasterElector. Use the default value for production and allow
@@ -49,16 +52,18 @@ class MySQLClusterLauncher(object):
 
     # Passed along to executors.
     self._zk_url = zk_url
+    self._framework_user = framework_user
     self._executor_uri = executor_uri
     self._executor_cmd = executor_cmd
     self._election_timeout = election_timeout
+    self._admin_keypath = admin_keypath
 
     # Used by the elector.
     self._query_interval = query_interval
 
     zk_root = zookeeper.parse(zk_url)[2]
-    self._manager = ClusterManager(kazoo, posixpath.join(zk_root, cluster_name))
-    self._cluster = MySQLCluster(cluster_name, num_nodes)
+    self._manager = ClusterManager(kazoo, get_cluster_path(zk_root, cluster_name))
+    self._cluster = MySQLCluster(cluster_name, cluster_user, cluster_password, num_nodes)
 
     self._driver = None  # Assigned by launch().
 
@@ -126,7 +131,7 @@ class MySQLClusterLauncher(object):
 
   def _new_task(self, cluster, offer, task_cpus, task_mem, task_port):
     """Return a new task with the requested resources."""
-    task_id = self._new_task_id()
+    server_id, task_id = self._new_task_id()
 
     task = mesos_pb2.TaskInfo()
     task.task_id.value = task_id
@@ -142,9 +147,15 @@ class MySQLClusterLauncher(object):
     uri.extract = False  # Don't need to decompress pex.
 
     task.data = json.dumps({
-        'cluster': cluster.name,
+        'framework_user': self._framework_user,
+        'host': offer.hostname,
         'port': task_port,
-        'zk_url': self._zk_url
+        'cluster': cluster.name,
+        'cluster_user': cluster.user,
+        'cluster_password': cluster.password,
+        'server_id': server_id,  # Use the integer Task ID as the server ID.
+        'zk_url': self._zk_url,
+        'admin_keypath': self._admin_keypath
     })
 
     resources = create_resources(task_cpus, task_mem, set([task_port]))
@@ -153,9 +164,10 @@ class MySQLClusterLauncher(object):
     return task
 
   def _new_task_id(self):
-    task_id = "mysos-" + self.cluster_name + "-" + str(self._cluster.next_id)
+    task_id_int = self._cluster.next_id
+    task_id_str = "mysos-" + self.cluster_name + "-" + str(self._cluster.next_id)
     self._cluster.next_id += 1
-    return task_id
+    return task_id_int, task_id_str
 
   def _new_elector(self):
     """Create a new instance of MySQLMasterElector."""
@@ -321,9 +333,11 @@ class MySQLCluster(object):
     It includes tasks (MySQLTask) for members of the cluster.
   """
 
-  def __init__(self, name, num_nodes):
+  def __init__(self, name, user, password, num_nodes):
     # TODO(jyx): Consider encapsulating members with @properties but public members are OK for now.
     self.name = name
+    self.user = user
+    self.password = password
     self.num_nodes = num_nodes
 
     self.members = {}  # {TaskID : MemberID} mappings. MemberIDs are assigned by ZooKeeper.

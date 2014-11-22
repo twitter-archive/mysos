@@ -15,14 +15,16 @@ class MysosExecutor(Executor):
     MysosExecutor is a fine-grained executor, i.e., one executor executes a single task.
   """
 
-  def __init__(self, runner_provider):
+  def __init__(self, runner_provider, sandbox):
     """
       :param runner_provider: An implementation of TaskRunnerProvider.
+      :param sandbox: The path to the sandbox where all files the executor reads/writes are located.
     """
     self._runner_provider = runner_provider
     self._runner = None  # A singleton task runner created by launchTask().
     self._driver = None  # Assigned in registered().
     self._killed = False  # True if the executor's singleton task is killed by the scheduler.
+    self._sandbox = sandbox
 
   # --- Mesos methods. ---
   @logged
@@ -48,7 +50,13 @@ class MysosExecutor(Executor):
       return
 
     # Create the runner here in the driver thread so subsequent task launches are rejected.
-    self._runner = self._runner_provider.from_task(task)
+    try:
+      self._runner = self._runner_provider.from_task(task, self._sandbox)
+    except TaskError as e:
+      log.error("Failed to create TaskRunner: %s" % e.message)
+      self._send_update(task.task_id.value, mesos_pb2.TASK_FAILED, e.message)
+      self._kill()
+      return
 
     # Run the task in a separate daemon thread.
     defer(lambda: self._run_task(task))

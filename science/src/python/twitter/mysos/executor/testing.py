@@ -12,7 +12,7 @@ class FakeTaskControlProvider(TaskControlProvider):
     An implementation of TaskControlProvider for testing.
   """
 
-  def from_task(self, task):
+  def from_task(self, task, sandbox):
     return FakeTaskControl(position=random.randint(0, 100))
 
 

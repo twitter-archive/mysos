@@ -1,4 +1,5 @@
 from collections import defaultdict
+import subprocess
 
 
 class Fake(object):
@@ -13,3 +14,16 @@ class Fake(object):
     def enqueue_arguments(*args, **kw):
       self.method_calls[attr].append((args, kw))
     return enqueue_arguments
+
+
+def build_and_execute_pex_target(target, binary):
+  """
+    :param target: The pants target.
+    :param binary: The path to the pex binary relative to the root of the repository.
+  """
+  assert subprocess.call(["./pants", target]) == 0
+
+  p = subprocess.Popen([binary, "--help"], stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+  out, err = p.communicate()
+  assert p.returncode == 1
+  assert out.startswith('Options'), 'Unexpected build output: %s' % out

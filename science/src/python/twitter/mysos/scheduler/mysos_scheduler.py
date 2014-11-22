@@ -74,6 +74,14 @@ app.add_option(
 )
 
 
+app.add_option(
+  '--admin_keypath',
+  dest='admin_keypath',
+  default=None,
+  help='The path to the key file with MySQL admin credentials on Mesos slaves',
+)
+
+
 FRAMEWORK_NAME = 'mysos'
 
 
@@ -95,6 +103,9 @@ def main(args, options):
 
   if options.zk_url is None:
     app.error('Must specify --zk_url')
+
+  if options.admin_keypath is None:
+    app.error('Must specify --admin_keypath')
 
   try:
     election_timeout = parse_time(options.election_timeout)
@@ -126,7 +137,8 @@ def main(args, options):
       options.executor_cmd,
       kazoo,
       options.zk_url,
-      election_timeout)
+      election_timeout,
+      options.admin_keypath)
 
   scheduler_driver = mesos.native.MesosSchedulerDriver(
     scheduler,
