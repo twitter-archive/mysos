@@ -174,17 +174,16 @@ class MysosTaskRunner(TaskRunner):
     except CalledProcessError as e:
       raise TaskError("Unable to get the slave's log position: %s" % e)
 
-  def join(self, timeout=None):
+  def join(self):
     """
       Wait for the runner to terminate.
 
-      :param timeout: Block at most this much time (in seconds) if specified and positive.
       :return: The return code of the subprocess. NOTE: A negative value -N indicates that the
                child was terminated by signal N (on Unix).
 
       :exception: The TaskError exception due to an error in task control operations.
     """
-    result = self._result.get(True, timeout)
+    result = self._result.get(True)
     if isinstance(result, Exception):
       raise result
     else:

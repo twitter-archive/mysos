@@ -2,6 +2,8 @@ import os
 import signal
 import unittest
 
+from twitter.common.concurrent import deadline
+from twitter.common.quantity import Amount, Time
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
 from twitter.mysos.common.cluster import ClusterManager
 from twitter.mysos.executor.mysos_task_runner import MysosTaskRunner
@@ -41,7 +43,9 @@ class TestTaskRunner(unittest.TestCase):
         task_control)
     runner.start()
     assert runner.stop()
-    assert runner.join(1) == -signal.SIGTERM  # Killed by SIGTERM.
+
+    # Killed by SIGTERM.
+    assert deadline(runner.join, Amount(1, Time.SECONDS)) == -signal.SIGTERM
 
   def test_demote(self):
     task_control = FakeTaskControl()
@@ -66,7 +70,7 @@ class TestTaskRunner(unittest.TestCase):
     # This demotes 'self_instance', which should cause runner to stop.
     manager.promote_member(another_member)
 
-    assert runner.join(1)
+    assert deadline(runner.join, Amount(1, Time.SECONDS))
 
   def test_reparent(self):
     task_control = FakeTaskControl()
@@ -87,7 +91,7 @@ class TestTaskRunner(unittest.TestCase):
     assert runner.master.get(True, 1) == master
 
     assert runner.stop()
-    assert runner.join(1)
+    assert deadline(runner.join, Amount(1, Time.SECONDS))
 
   def test_mysqld_error(self):
     task_control = FakeTaskControl(mysqld="exit 123")
@@ -98,7 +102,7 @@ class TestTaskRunner(unittest.TestCase):
         task_control)
 
     runner.start()
-    assert runner.join(1) == 123
+    assert deadline(runner.join, Amount(1, Time.SECONDS)) == 123
 
   def test_start_command_error(self):
     task_control = FakeTaskControl(start_cmd="exit 1")
@@ -176,4 +180,4 @@ done
     task_control._mysqld = cmd
     runner.start()
     assert runner.stop(timeout=1)
-    assert runner.join(1) == -signal.SIGKILL
+    assert deadline(runner.join, Amount(1, Time.SECONDS)) == -signal.SIGKILL
