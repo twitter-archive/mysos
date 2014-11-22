@@ -44,9 +44,15 @@ class MysosTaskRunner(TaskRunner):
   """
     A runner that manages the lifecycle of a MySQL task (through the provided 'task_control').
 
-    This class is accessed from the MysosExecutor thread (not the ExecutorDriver thread because
-    MysosExecutor invokes operations asynchronously) and the ClusterListener thread and is
-    thread-safe.
+    The task is executed as a long-running process its return code can be obtained using 'join()'.
+
+    Thread-safety:
+      This class is accessed from the MysosExecutor thread (not the ExecutorDriver thread because
+      MysosExecutor invokes operations asynchronously) and the ClusterListener thread and is
+      thread-safe.
+
+    TODO(jyx): Push the knowledge of the underlying subprocess down to the task control and stop the
+               the subprocess using the task control.
   """
 
   def __init__(self, self_instance, kazoo, cluster_root, task_control):
@@ -63,7 +69,6 @@ class MysosTaskRunner(TaskRunner):
 
     self._started = False  # Indicates whether start() has already been called.
     self._stopping = False  # Indicates whether stop() has already been called.
-    self._forked = threading.Event()  # Set when the task process is forked.
     self._exited = threading.Event()  # Set when the task process has exited.
     self._result = Queue.Queue()  # The returncode returned by the task process or an exception.
 
@@ -84,35 +89,24 @@ class MysosTaskRunner(TaskRunner):
   def start(self):
     """
       Start the runner in a separate thread and wait for the task process to be forked.
-
-      :return: False if the runner is already started.
     """
     with self._lock:
-      if not self._started:
-        self._started = True
-        defer(self._run)
-      else:
-        log.warn("Runner already started")
-        return False
+      if self._started:
+        raise TaskError("Runner already started")
+      self._started = True
 
-    # Wait for the thread to start running.
-    log.debug("Waiting for process to be forked")
-    return self._forked.wait()
-
-  def _run(self):
-    with self._lock:
-      # Store the process so we can kill it if necessary.
       try:
+        # Store the process so we can kill it if necessary.
         self._popen = self._task_control.start()
+        log.info("Task started in subprocess %s" % self._popen.pid)
+        defer(self._wait)
+
         # Only start listening to ZK events after the task subprocess has been successfully started.
         self._listener.start()
       except CalledProcessError as e:
-        self._result.put(TaskError("Failed to start MySQL task: %s" % e))
-        return
-      finally:
-        # Notify start().
-        self._forked.set()
+        raise TaskError("Failed to start MySQL task: %s" % e)
 
+  def _wait(self):
     # Block until the subprocess exits and delivers the return code.
     self._result.put(self._popen.wait())
 
@@ -128,7 +122,7 @@ class MysosTaskRunner(TaskRunner):
       :return: True if an active runner is stopped, False if the runner is not started or already
                stopping/stopped.
     """
-    if not self._forked.is_set():
+    if not self._started:
       log.warn("Cannot stop the runner because it's not started")
       return False
 
@@ -137,10 +131,12 @@ class MysosTaskRunner(TaskRunner):
       return False
 
     with self._lock:
-      assert self._popen
-
       log.info("Stopping runner")
       self._stopping = True
+
+      if not self._popen:
+        log.info("The runner task did not start successfully so no need to kill it")
+        return False
 
       try:
         log.info("Terminating process group: %s" % self._popen.pid)
@@ -175,7 +171,7 @@ class MysosTaskRunner(TaskRunner):
     try:
       log_position = self._task_control.get_log_position()
       return log_position
-    except (CalledProcessError, TaskControl.Error) as e:
+    except CalledProcessError as e:
       raise TaskError("Unable to get the slave's log position: %s" % e)
 
   def join(self, timeout=None):

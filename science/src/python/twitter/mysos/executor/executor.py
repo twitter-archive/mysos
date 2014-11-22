@@ -6,11 +6,11 @@ from twitter.mysos.common.decorators import logged
 
 from .task_runner import TaskError
 
-import mesos.interface
-import mesos.interface.mesos_pb2
+from mesos.interface import Executor
+import mesos.interface.mesos_pb2 as mesos_pb2
 
 
-class MysosExecutor(mesos.interface.Executor):
+class MysosExecutor(Executor):
   """
     MysosExecutor is a fine-grained executor, i.e., one executor executes a single task.
   """
@@ -42,8 +42,8 @@ class MysosExecutor(mesos.interface.Executor):
   def launchTask(self, driver, task):
     if self._runner:
       log.error("Executor allows only one task")
-      update = mesos.interface.mesos_pb2.TaskStatus()
-      update.state = mesos.interface.mesos_pb2.TASK_FAILED
+      update = mesos_pb2.TaskStatus()
+      update.state = mesos_pb2.TASK_FAILED
       driver.sendStatusUpdate(update)
       return
 
@@ -55,15 +55,14 @@ class MysosExecutor(mesos.interface.Executor):
 
   def _run_task(self, task):
     assert self._runner, "_runner should be created before this method is called"
-    self._runner.start()
-
-    assert self._driver is not None
-
-    log.info("Task runner for task %s started" % task.task_id)
-    update = mesos.interface.mesos_pb2.TaskStatus()
-    update.task_id.value = task.task_id.value
-    update.state = mesos.interface.mesos_pb2.TASK_RUNNING
-    self._driver.sendStatusUpdate(update)
+    try:
+      self._runner.start()
+      log.info("Task runner for task %s started" % task.task_id)
+      self._send_update(task.task_id.value, mesos_pb2.TASK_RUNNING)
+    except TaskError as e:
+      log.error("Task runner for task %s failed to start: %s" % (task.task_id, str(e)))
+      # Send TASK_FAILED if the task failed to start.
+      self._send_update(task.task_id.value, mesos_pb2.TASK_FAILED)
 
     # Wait for the task's return code (when it terminates).
     try:
@@ -74,11 +73,10 @@ class MysosExecutor(mesos.interface.Executor):
       log.error("Task terminated: %s" % e)
 
     if self._killed:
-      update.state = mesos.interface.mesos_pb2.TASK_KILLED
+      self._send_update(task.task_id.value, mesos_pb2.TASK_KILLED)
     else:
-      update.state = mesos.interface.mesos_pb2.TASK_FAILED
+      self._send_update(task.task_id.value, mesos_pb2.TASK_FAILED)
 
-    self._driver.sendStatusUpdate(update)
     self._kill()
 
   @logged
@@ -134,3 +132,22 @@ class MysosExecutor(mesos.interface.Executor):
     log.error("Shutting down due to error: %s" % message)
     self._killed = True
     self._kill()
+
+  def _send_update(self, task_id, state, message=None):
+    update = mesos_pb2.TaskStatus()
+    if not isinstance(state, int):
+      raise TypeError('Invalid state type %s, should be int.' % type(state))
+    if state not in [
+        mesos_pb2.TASK_STARTING,
+        mesos_pb2.TASK_RUNNING,
+        mesos_pb2.TASK_FINISHED,
+        mesos_pb2.TASK_KILLED,
+        mesos_pb2.TASK_FAILED,
+        mesos_pb2.TASK_LOST]:
+      raise ValueError('Invalid state: %s' % state)
+    update.state = state
+    update.task_id.value = task_id
+    if message:
+      update.message = str(message)
+    log.info('Updating %s => %s. Reason: %s' % (task_id, mesos_pb2.TaskState.Name(state), message))
+    self._driver.sendStatusUpdate(update)

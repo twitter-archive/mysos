@@ -39,7 +39,7 @@ class TestTaskRunner(unittest.TestCase):
         self._client,
         "/home/test/my_cluster",
         task_control)
-    assert runner.start()
+    runner.start()
     assert runner.stop()
     assert runner.join(1) == -signal.SIGTERM  # Killed by SIGTERM.
 
@@ -108,9 +108,8 @@ class TestTaskRunner(unittest.TestCase):
         "/home/test/my_cluster",
         task_control)
 
-    assert runner.start()
     with pytest.raises(TaskError) as e:
-      runner.join()
+      runner.start()
     assert e.value.message.startswith("Failed to start MySQL task")
 
   def test_promote_command_error(self):
@@ -122,7 +121,7 @@ class TestTaskRunner(unittest.TestCase):
         task_control)
 
     manager = ClusterManager(self._client, "/home/test/my_cluster")
-    assert runner.start()
+    runner.start()
 
     self_member = manager.add_member(self._self_instance)
 
@@ -143,7 +142,7 @@ class TestTaskRunner(unittest.TestCase):
         "/home/test/my_cluster",
         task_control)
 
-    assert runner.start()
+    runner.start()
     assert runner.get_log_position() == 1
 
   def test_get_log_position_error(self):
@@ -175,6 +174,6 @@ done
       task_control)
 
     task_control._mysqld = cmd
-    assert runner.start()
+    runner.start()
     assert runner.stop(timeout=1)
     assert runner.join(1) == -signal.SIGKILL

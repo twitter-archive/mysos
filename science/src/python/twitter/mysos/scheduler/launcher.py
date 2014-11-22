@@ -343,10 +343,14 @@ class MySQLCluster(object):
     return [t for t in self.tasks.values() if t.state == mesos_pb2.TASK_RUNNING]
 
   def remove_task(self, task_id):
+    assert task_id in self.tasks
     del self.tasks[task_id]
-    if self.members[task_id] == self.master_id:
-      self.master_id = None
-    del self.members[task_id]
+    # A task may not be registered in 'members' (thus ZK) if it directly transitioned from STAGING
+    # to a terminal state.
+    if task_id in self.members:
+      if self.members[task_id] == self.master_id:
+        self.master_id = None
+      del self.members[task_id]
 
 
 class MySQLTask(object):
