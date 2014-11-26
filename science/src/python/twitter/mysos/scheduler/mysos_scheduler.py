@@ -47,6 +47,14 @@ app.add_option(
 
 
 app.add_option(
+    '--mysql_pkg_uri',
+    dest='mysql_pkg_uri',
+    default=None,
+    help='URI for the MySQL package',
+)
+
+
+app.add_option(
     '--executor_cmd',
     dest='executor_cmd',
     default=None,
@@ -98,6 +106,9 @@ def main(args, options):
   if options.executor_uri is None:
     app.error('Must specify --executor_uri')
 
+  if options.mysql_pkg_uri is None:
+    app.error('Must specify --mysql_pkg_uri')
+
   if options.executor_cmd is None:
     app.error('Must specify --executor_cmd')
 
@@ -138,7 +149,8 @@ def main(args, options):
       kazoo,
       options.zk_url,
       election_timeout,
-      options.admin_keypath)
+      options.admin_keypath,
+      options.mysql_pkg_uri)
 
   scheduler_driver = mesos.native.MesosSchedulerDriver(
     scheduler,

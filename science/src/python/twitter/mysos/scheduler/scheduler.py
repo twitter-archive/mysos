@@ -27,7 +27,8 @@ class MysosScheduler(mesos.interface.Scheduler):
       kazoo,
       zk_url,
       election_timeout,
-      admin_keypath):
+      admin_keypath,
+      mysql_pkg_uri):
     """
       :param framework_user: The Unix user that Mysos executor runs as.
       :param executor_uri: URI for the Mysos executor pex file.
@@ -43,6 +44,7 @@ class MysosScheduler(mesos.interface.Scheduler):
     self._executor_cmd = executor_cmd
     self._election_timeout = election_timeout
     self._admin_keypath = admin_keypath
+    self._mysql_pkg_uri = mysql_pkg_uri
 
     self._driver = None  # Will be set by registered().
 
@@ -93,13 +95,18 @@ class MysosScheduler(mesos.interface.Scheduler):
           self._executor_uri,
           self._executor_cmd,
           self._election_timeout,
-          self._admin_keypath)
+          self._admin_keypath,
+          self._mysql_pkg_uri)
 
       return get_cluster_path(self._zk_url, cluster_name), cluster_password
 
   def _stop(self):
     """Stop the scheduler."""
-    self._driver.stop(True)  # Set failover to True.
+
+    # 'self._driver' is set in registered() so it could be None if the executor is asked to stop
+    # before it is registered (e.g. an error is received).
+    if self._driver:
+      self._driver.stop(True)  # Set failover to True.
     self.stopped.set()
 
   # --- Mesos methods. ---

@@ -1,0 +1,34 @@
+install = Packer.install(name='mysos_scheduler', version='latest')
+
+run = Process(
+  name='mysos_scheduler',
+  cmdline=' '.join([
+    'chmod +x ./mysos_scheduler.pex && ./mysos_scheduler.pex',
+    '--port {{thermos.ports[http]}}',
+    '--framework_user=mysos',
+    '--mesos_master=zk://mesos:mesos@sdzktest.smf1.twitter.com:2181/home/mesos/dev2/master',
+    '--executor_uri=hdfs://hadoop-rt-nn.smf1.twitter.com:8020/mesos/mysos/smf1-dev2/mysos_executor.pex',
+    '--executor_cmd=./mysos_executor.pex',
+    '--zk_url=zk://mysos:mysos@sdzktest.smf1.twitter.com:2181/mysos/dev2/clusters',
+    '--admin_keypath=/etc/twkeys/mysos/mysos/admin.yml',
+    '--mysql_pkg_uri=hdfs://hadoop-rt-nn.smf1.twitter.com:8020/mesos/mysos/smf1-dev2/mysos_mysql.tar.gz'])
+)
+
+resources = Resources(cpu=1, ram=(512*MB), disk=(512*MB))
+
+task = SequentialTask(processes=[install, run], resources=resources)
+
+mysos_scheduler = Service(
+  contact='yan@twitter.com',
+  role='mysos',
+  name='mysos_scheduler',
+  task=task,
+  instances=1,
+  production=False,
+  update_config=UpdateConfig(),
+  announce=Announcer()
+)
+
+jobs = [
+  mysos_scheduler(environment='test', cluster='smf1-dev2'),
+]

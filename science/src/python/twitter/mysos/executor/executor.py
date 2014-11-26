@@ -3,6 +3,7 @@ import json
 from twitter.common import log
 from twitter.common.concurrent import defer
 from twitter.mysos.common.decorators import logged
+from twitter.mysos.common.fetcher import Fetcher, FetcherFactory
 
 from .task_runner import TaskError
 
@@ -63,14 +64,25 @@ class MysosExecutor(Executor):
 
   def _run_task(self, task):
     assert self._runner, "_runner should be created before this method is called"
+
     try:
+      mysql_pkg_uri = json.loads(task.data)['mysql_pkg_uri']
+      fetcher = FetcherFactory.get_fetcher(mysql_pkg_uri)
+      fetcher.fetch(mysql_pkg_uri, self._sandbox)
+      log.info("Successfully fetched task package into %s" % self._sandbox)
+
       self._runner.start()
       log.info("Task runner for task %s started" % task.task_id)
+
       self._send_update(task.task_id.value, mesos_pb2.TASK_RUNNING)
-    except TaskError as e:
+    except (Fetcher.Error, TaskError) as e:
       log.error("Task runner for task %s failed to start: %s" % (task.task_id, str(e)))
       # Send TASK_FAILED if the task failed to start.
       self._send_update(task.task_id.value, mesos_pb2.TASK_FAILED)
+    except Exception as e:
+      log.error("Error occurred while executing the task: %s" % e)
+      # Send TASK_LOST for unknown errors.
+      self._send_update(task.task_id.value, mesos_pb2.TASK_LOST)
 
     # Wait for the task's return code (when it terminates).
     try:
