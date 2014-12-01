@@ -1,0 +1,36 @@
+#TODO(jyx): Merge all aurora job files.
+
+install = Packer.install(name='mysos_scheduler', version='latest')
+
+run = Process(
+  name='mysos_scheduler',
+  cmdline=' '.join([
+    'chmod +x ./mysos_scheduler.pex && ./mysos_scheduler.pex',
+    '--port {{thermos.ports[http]}}',
+    '--framework_user=mysos',
+    '--mesos_master=zk://mesos:mesos@zookeeperdev.atla.twitter.com:2181/home/mesos/test/master',
+    '--executor_uri=hftp://hadoop-rt-nn.atla.twitter.com:50070/mesos/mysos/atla-test/mysos_executor.pex',
+    '--executor_cmd=./mysos_executor.pex',
+    '--zk_url=zk://mysos:mysos@zookeeperdev.atla.twitter.com:2181/mysos/test/clusters',
+    '--admin_keypath=/etc/twkeys/mysos/mysos/admin.yml',
+    '--mysql_pkg_uri=hftp://hadoop-rt-nn.atla.twitter.com:50070/mesos/mysos/atla-test/mysos_mysql.tar.gz'])
+)
+
+resources = Resources(cpu=1, ram=(512*MB), disk=(512*MB))
+
+task = SequentialTask(processes=[install, run], resources=resources)
+
+mysos_scheduler = Service(
+  contact='yan@twitter.com',
+  role='mysos',
+  name='mysos_scheduler',
+  task=task,
+  instances=1,
+  production=False,
+  update_config=UpdateConfig(),
+  announce=Announcer()
+)
+
+jobs = [
+  mysos_scheduler(environment='test',cluster='atla-test'),
+]

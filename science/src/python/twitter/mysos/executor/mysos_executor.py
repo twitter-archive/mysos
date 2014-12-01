@@ -48,6 +48,7 @@ def main(args, options):
   unpack_assets(ASSET_RELPATH)  # Unpack files.
 
   FetcherFactory.register_fetcher('hdfs', HDFSFetcher())
+  FetcherFactory.register_fetcher('hftp', HDFSFetcher())
 
   log.info("Starting Mysos executor within sandbox %s" % SANDBOX_ROOT)
   executor = MysosExecutor(
