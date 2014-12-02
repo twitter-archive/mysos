@@ -31,3 +31,8 @@ class MysosServer(HttpServer):
       raise bottle.HTTPResponse(e.message, status=400)
     except ValueError as e:
       raise bottle.HTTPResponse(e.message, status=400)
+
+  @route('/', method=['GET'])
+  def home(self):
+    """Landing page."""
+    return "<h1>Mysos scheduler is up and running</h1>"
