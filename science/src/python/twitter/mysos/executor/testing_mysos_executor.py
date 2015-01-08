@@ -7,9 +7,10 @@ from twitter.common import app, log
 from twitter.common.log.options import LogOptions
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
 from twitter.mysos.common import zookeeper
-from twitter.mysos.executor.executor import MysosExecutor
-from twitter.mysos.executor.mysos_task_runner import MysosTaskRunner, TaskRunnerProvider
-from twitter.mysos.executor.testing import FakeTaskControlProvider
+
+from .executor import MysosExecutor
+from .mysos_task_runner import MysosTaskRunner, TaskRunnerProvider
+from .testing import FakeTaskControlProvider
 
 import mesos.native
 from zake.fake_client import FakeClient
