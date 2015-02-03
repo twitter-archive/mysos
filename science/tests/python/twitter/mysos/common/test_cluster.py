@@ -42,9 +42,13 @@ class TestCluster(unittest.TestCase):
     manager = ClusterManager(self.client, "/home/my_cluster")
 
     instance1 = ServiceInstance(Endpoint("host1", 10000))
-    manager.add_member(instance1)
+    member1 = manager.add_member(instance1)
+    assert member1 == manager.add_member(instance1)  # Second insertion is ignored.
+
     instance2 = ServiceInstance(Endpoint("host2", 10000))
     manager.add_member(instance2)
+
+    assert len(manager._cluster.members) == 2
 
     assert (self.storage.paths["/home/my_cluster/slaves/member_0000000000"]["data"] ==
             ServiceInstance.pack(instance1))
@@ -55,7 +59,9 @@ class TestCluster(unittest.TestCase):
     manager = ClusterManager(self.client, "/home/my_cluster")
     instance = ServiceInstance(Endpoint("host", 10000))
     member = manager.add_member(instance)
-    manager.promote_member(member)
+
+    assert manager.promote_member(member)
+    assert not manager.promote_member(member)  # The 2nd promotion is a no-op.
 
     assert (self.storage.paths["/home/my_cluster/master/member_0000000000"]["data"] ==
             ServiceInstance.pack(instance))
@@ -64,7 +70,9 @@ class TestCluster(unittest.TestCase):
     manager = ClusterManager(self.client, "/home/my_cluster")
     instance = ServiceInstance(Endpoint("host", 10000))
     member = manager.add_member(instance)
-    manager.remove_member(member)
+
+    assert manager.remove_member(member)
+    assert not manager.remove_member(member)  # The second deletion is ignored.
 
     assert "/home/my_cluster/master/member_0000000000" not in self.storage.paths
 
@@ -123,24 +131,21 @@ class TestCluster(unittest.TestCase):
     client = FakeClient()
     client.start()
     manager = ClusterManager(client, "/home/my_cluster")
-    with pytest.raises(ValueError) as e:
-      manager.remove_member("123")
-    assert e.value.message == 'Invalid member_id'
 
     with pytest.raises(ValueError) as e:
       manager.promote_member("123")
-    assert e.value.message == 'Invalid member_id'
+    assert e.value.message == 'Invalid member_id: 123'
 
   def test_invalid_znode(self):
     instance1 = ServiceInstance(Endpoint("host1", 10000))
     handler1 = CallbackHandler()
     listener1 = ClusterListener(
-      self.client,
-      "/home/my_cluster",
-      instance1,
-      handler1.promotion_callback,
-      handler1.demotion_callback,
-      handler1.master_callback)
+        self.client,
+        "/home/my_cluster",
+        instance1,
+        handler1.promotion_callback,
+        handler1.demotion_callback,
+        handler1.master_callback)
     listener1.start()
 
     self.client.ensure_path("/home/my_cluster/master")
@@ -148,3 +153,28 @@ class TestCluster(unittest.TestCase):
 
     # Invalid ZNode data translates into a 'None' return.
     assert handler1.detected.get(True, 1) is None
+
+  def test_existing_zk(self):
+    """
+      ClusterManager needs to be able to recover from an existing ZK group for scheduler failover.
+    """
+    manager = ClusterManager(self.client, "/home/my_cluster")
+
+    instance1 = ServiceInstance(Endpoint("host1", 10000))
+    member1 = manager.add_member(instance1)
+    instance2 = ServiceInstance(Endpoint("host2", 10000))
+    member2 = manager.add_member(instance2)
+
+    assert (self.storage.paths["/home/my_cluster/slaves/member_0000000000"]["data"] ==
+            ServiceInstance.pack(instance1))
+    assert (self.storage.paths["/home/my_cluster/slaves/member_0000000001"]["data"] ==
+            ServiceInstance.pack(instance2))
+
+    manager.promote_member(member1)
+
+    # Test the new ClusterManager.
+    manager2 = ClusterManager(self.client, "/home/my_cluster")
+    assert len(manager2._cluster.members) == 2
+    assert member1 in manager2._cluster.members
+    assert member2 in manager2._cluster.members
+    assert manager2._cluster.members[member1] == ServiceInstance.pack(instance1)
