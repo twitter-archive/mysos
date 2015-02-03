@@ -4,9 +4,11 @@ import subprocess
 
 from twitter.common import log
 from twitter.common.concurrent import deadline
+from twitter.common.dirutil import safe_mkdtemp
 from twitter.common.quantity import Amount, Time
 from twitter.mysos.common.cluster import get_cluster_path, wait_for_master
 from twitter.mysos.scheduler.scheduler import MysosScheduler
+from twitter.mysos.scheduler.state import LocalStateProvider, Scheduler
 
 from kazoo.handlers.threading import SequentialThreadingHandler
 import mesos.interface
@@ -32,7 +34,7 @@ def test_scheduler_runs():
 
   # Make sure testing_mysos_executor.pex is built and available to be fetched by Mesos slave.
   assert subprocess.call(
-      ["./pants", "tests/python/twitter/mysos/executor:testing_mysos_executor"]) == 0
+      ["./pants", "src/python/twitter/mysos/executor:testing_mysos_executor"]) == 0
 
   storage = FakeStorage(SequentialThreadingHandler())
   zk_client = FakeClient(storage=storage)
@@ -42,24 +44,35 @@ def test_scheduler_runs():
   cluster_name = "test_cluster"
   num_nodes = 3
 
+  state_provider = LocalStateProvider(safe_mkdtemp())
+
   framework_info = FrameworkInfo(
       user=getpass.getuser(),
       name="mysos",
       checkpoint=False)
 
+  state = Scheduler(framework_info)
+
   scheduler = MysosScheduler(
+      state,
+      state_provider,
       getpass.getuser(),
       os.path.abspath("dist/testing_mysos_executor.pex"),
       "./testing_mysos_executor.pex",
       zk_client,
       zk_url,
-      election_timeout=Amount(40, Time.SECONDS))
+      Amount(40, Time.SECONDS),
+      "/fakepath",
+      "fake://address")
 
   scheduler_driver = mesos.native.MesosSchedulerDriver(
       scheduler,
       framework_info,
       "local")
   scheduler_driver.start()
+
+  # Wait until the scheduler is connected and becomes available.
+  assert scheduler.connected.wait(30)
 
   scheduler.create_cluster(cluster_name, "mysql_user", num_nodes)
 

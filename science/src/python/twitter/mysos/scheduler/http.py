@@ -29,10 +29,16 @@ class MysosServer(HttpServer):
       raise bottle.HTTPResponse(e.message, status=409)
     except MysosScheduler.InvalidUser as e:
       raise bottle.HTTPResponse(e.message, status=400)
+    except MysosScheduler.ServiceUnavailable as e:
+      raise bottle.HTTPResponse(e.message, status=503)
     except ValueError as e:
       raise bottle.HTTPResponse(e.message, status=400)
 
   @route('/', method=['GET'])
   def home(self):
     """Landing page."""
-    return "<h1>Mysos scheduler is up and running</h1>"
+    # TODO(jyx): Create a system status page.
+    if not self._scheduler.connected.is_set():
+      return "<h1>Mysos scheduler is still connecting...</h1>"
+    else:
+      return "<h1>Mysos scheduler is available</h1>"

@@ -4,11 +4,13 @@ import threading
 import string
 
 from twitter.common import log
+from twitter.common.collections.orderedset import OrderedSet
 from twitter.mysos.common import zookeeper
 from twitter.mysos.common.cluster import get_cluster_path
 from twitter.mysos.common.decorators import logged
 
-from .launcher import LauncherError, MySQLClusterLauncher
+from .launcher import MySQLClusterLauncher
+from .state import MySQLCluster, Scheduler, StateProvider
 
 import mesos.interface
 
@@ -16,11 +18,15 @@ import mesos.interface
 class MysosScheduler(mesos.interface.Scheduler):
 
   class Error(Exception): pass
+
   class ClusterExists(Error): pass
   class InvalidUser(Error): pass
+  class ServiceUnavailable(Error): pass
 
   def __init__(
       self,
+      state,
+      state_provider,
       framework_user,
       executor_uri,
       executor_cmd,
@@ -30,14 +36,28 @@ class MysosScheduler(mesos.interface.Scheduler):
       admin_keypath,
       mysql_pkg_uri):
     """
-      :param framework_user: The Unix user that Mysos executor runs as.
-      :param executor_uri: URI for the Mysos executor pex file.
-      :param executor_cmd: Command to launch the executor.
+      :param state: The Scheduler object.
+      :param state_provider: The StateProvider instance that the scheduler should use to
+                             restore/persist states.
+      :param framework_user: See flags.
+      :param executor_uri: See flags.
+      :param executor_cmd: See flags.
+      :param election_timeout: See flags.
+      :param admin_keypath: See flags.
+      :param mysql_pkg_uri: See flags.
       :param kazoo: The Kazoo client for communicating MySQL cluster information between the
                     scheduler and the executors.
       :param zk_url: ZooKeeper URL for used by the scheduler and the executors to access ZooKeeper.
     """
     self._lock = threading.Lock()
+
+    if not isinstance(state, Scheduler):
+      raise TypeError("'state' should be an instance of Scheduler")
+    self._state = state
+
+    if not isinstance(state_provider, StateProvider):
+      raise TypeError("'state_provider' should be an instance of StateProvider")
+    self._state_provider = state_provider
 
     self._framework_user = framework_user
     self._executor_uri = executor_uri
@@ -52,12 +72,47 @@ class MysosScheduler(mesos.interface.Scheduler):
     self._zk_root = zookeeper.parse(zk_url)[2]
     self._kazoo = kazoo
 
+    self._tasks = {}  # {Task ID: cluster name} mappings.
     self._launchers = OrderedDict()  # Order-preserving {cluster name : MySQLClusterLauncher}
                                      # mappings so cluster requests are fulfilled on a first come,
                                      # first serve (FCFS) basis.
-    self._tasks = {}  # {TaskID : cluster_name} mappings.
+
+    # Recover launchers for existing clusters. A newly created scheduler has no launcher to recover.
+    # TODO(jyx): The recovery of clusters can potentially be parallelized.
+    for cluster_name in OrderedSet(self._state.clusters):  # Make a copy so we can remove dead
+                                                           # entries while iterating the copy.
+      log.info("Recovering launcher for cluster %s" % cluster_name)
+      try:
+        cluster = state_provider.load_cluster_state(cluster_name)
+        if not cluster:
+          # The scheduler could have failed over before creating the launcher. The user request
+          # should have failed and there is no cluster state to restore.
+          log.info("Skipping cluster %s because its state cannot be found" % cluster_name)
+          self._state.clusters.remove(cluster_name)
+          self._state_provider.dump_scheduler_state(self._state)
+          continue
+        for task_id in cluster.tasks:
+          self._tasks[task_id] = cluster.name  # Reconstruct the 'tasks' map.
+        self._launchers[cluster.name] = MySQLClusterLauncher(
+            self._driver,
+            cluster,
+            self._state_provider,
+            self._zk_url,
+            self._kazoo,
+            self._framework_user,
+            self._executor_uri,
+            self._executor_cmd,
+            self._election_timeout,
+            self._admin_keypath,
+            self._mysql_pkg_uri)  # Order of launchers is preserved.
+      except StateProvider.Error as e:
+        raise self.Error("Failed to recover cluster: %s" % e.message)
+
+    log.info("Recovered %s clusters" % len(self._launchers))
 
     self.stopped = threading.Event()  # An event set when the scheduler is stopped.
+    self.connected = threading.Event()  # An event set when the scheduler is first connected to
+                                        # Mesos. The scheduler tolerates later disconnections.
 
   # --- Public interface. ---
   def create_cluster(self, cluster_name, cluster_user, num_nodes):
@@ -70,10 +125,19 @@ class MysosScheduler(mesos.interface.Scheduler):
         - ZooKeeper URL for this Mysos cluster that can be used to resolve MySQL cluster info.
         - The password for the specified user of the specified cluster.
 
-      TODO(jyx): We can expose the cluster-level ZooKeeper URL via an 'info' endpoint.
+      NOTE:
+        If the scheduler fails over after the cluster state is checkpointed, the new scheduler
+        instance will restore the state and continue to launch the cluster. TODO(jyx): Need to allow
+        users to retrieve the cluster info (e.g. the passwords) afterwards in case the user request
+        has failed but the cluster is successfully created eventually.
     """
     with self._lock:
-      if cluster_name in self._launchers:
+      if not self._driver:
+        # 'self._driver' is set in (re)registered() after which the scheduler becomes "available".
+        # We need to get hold of the driver to recover the scheduler.
+        raise self.ServiceUnavailable("Service unavailable. Try again later")
+
+      if cluster_name in self._state.clusters:
         raise self.ClusterExists("Cluster '%s' already exists" % cluster_name)
 
       if not cluster_user:
@@ -82,28 +146,31 @@ class MysosScheduler(mesos.interface.Scheduler):
       if int(num_nodes) <= 0:
         raise ValueError("Invalid number of cluster nodes: %s" % num_nodes)
 
-      cluster_password = gen_password()
+      self._state.clusters.add(cluster_name)
+      self._state_provider.dump_scheduler_state(self._state)
+
+      cluster = MySQLCluster(cluster_name, cluster_user, gen_password(), int(num_nodes))
+      self._state_provider.dump_cluster_state(cluster)
 
       self._launchers[cluster_name] = MySQLClusterLauncher(
+          self._driver,
+          cluster,
+          self._state_provider,
           self._zk_url,
           self._kazoo,
           self._framework_user,
-          cluster_name,
-          cluster_user,
-          cluster_password,
-          int(num_nodes),
           self._executor_uri,
           self._executor_cmd,
           self._election_timeout,
           self._admin_keypath,
           self._mysql_pkg_uri)
 
-      return get_cluster_path(self._zk_url, cluster_name), cluster_password
+      return get_cluster_path(self._zk_url, cluster_name), cluster.password
 
   def _stop(self):
     """Stop the scheduler."""
 
-    # 'self._driver' is set in registered() so it could be None if the executor is asked to stop
+    # 'self._driver' is set in registered() so it could be None if the scheduler is asked to stop
     # before it is registered (e.g. an error is received).
     if self._driver:
       self._driver.stop(True)  # Set failover to True.
@@ -113,10 +180,15 @@ class MysosScheduler(mesos.interface.Scheduler):
   @logged
   def registered(self, driver, frameworkId, masterInfo):
     self._driver = driver
+    self._state.framework_info.id.value = frameworkId.value
+    self._state_provider.dump_scheduler_state(self._state)
+    self.connected.set()
 
   @logged
   def reregistered(self, driver, masterInfo):
-    pass
+    self._driver = driver
+    self.connected.set()
+    # TODO(jyx): Reconcile tasks.
 
   @logged
   def disconnected(self, driver):
@@ -136,7 +208,7 @@ class MysosScheduler(mesos.interface.Scheduler):
         # For each offer, launchers are asked to launch a task in the order they are added (FCFS).
         for name in self._launchers:
           launcher = self._launchers[name]
-          task_id, _ = launcher.launch(self._driver, offer)
+          task_id, _ = launcher.launch(offer)
           if task_id:
             self._tasks[task_id] = launcher.cluster_name
             # Move on to the next offer.
@@ -153,7 +225,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       launcher = self._get_launcher_by_task_id(task_id)
       try:
         launcher.status_update(status)
-      except LauncherError as e:
+      except MySQLClusterLauncher.Error as e:
         log.error("Status update failed due to launcher error: %s" % e.message)
         self._stop()
 
@@ -176,8 +248,8 @@ class MysosScheduler(mesos.interface.Scheduler):
     self._stop()  # SchedulerDriver aborts when an error message is received.
 
   def _get_launcher_by_task_id(self, task_id):
-    # TODO(jyx): Currently we don't delete entries from 'self._tasks' so a mapping can always be
-    # found but we should clean it up when tasks die.
+    # TODO(jyx): Currently we don't delete entries from 'self._tasks' so a mapping can always
+    # be found but we should clean it up when tasks die.
     assert task_id in self._tasks
     cluster_name = self._tasks[task_id]
     return self._launchers[cluster_name]

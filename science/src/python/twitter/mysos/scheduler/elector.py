@@ -148,8 +148,9 @@ class MySQLMasterElector(ExceptionalThread):
             str(position), task_id))
         return
 
-      log.info('Updating position to %s for slave %s of cluster %s' % (
+      log.info('Updating position to %s (epoch=%s) for slave %s of cluster %s' % (
           str(position),
+          epoch,
           str((task_id, self._mesos_slaves[task_id])),
           self._cluster_name))
 
@@ -215,8 +216,8 @@ class MySQLMasterElector(ExceptionalThread):
   def _query_slave(self, task_id):
     assert task_id in self._mesos_slaves
 
-    log.info('Querying MySQL slave %s for its log position' % str(
-        (task_id, self._mesos_slaves[task_id])))
+    log.info('Querying MySQL slave %s for its log position (epoch=%s)' % (
+        str((task_id, self._mesos_slaves[task_id])), self._epoch))
 
     # Because the elector re-sends messages, it's necessary to use the epoch to differentiate
     # responses for each election.

@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 from twitter.common import app, log
 from twitter.common.exceptions import ExceptionalThread
@@ -7,8 +8,9 @@ from twitter.common.log.options import LogOptions
 from twitter.common.quantity.parse_simple import InvalidTime, parse_time
 from twitter.mysos.common import zookeeper
 
-from .scheduler import MysosScheduler
 from .http import MysosServer
+from .scheduler import MysosScheduler
+from .state import LocalStateProvider, Scheduler, StateProvider
 
 from kazoo.client import KazooClient
 
@@ -83,10 +85,18 @@ app.add_option(
 
 
 app.add_option(
-  '--admin_keypath',
-  dest='admin_keypath',
-  default=None,
-  help='The path to the key file with MySQL admin credentials on Mesos slaves',
+    '--admin_keypath',
+    dest='admin_keypath',
+    default=None,
+    help='The path to the key file with MySQL admin credentials on Mesos slaves',
+)
+
+
+app.add_option(
+    '--work_dir',
+    dest='work_dir',
+    default=os.path.join(tempfile.gettempdir(), 'mysos'),
+    help='Directory path to place Mysos work directories'
 )
 
 
@@ -125,11 +135,25 @@ def main(args, options):
 
   options.executor_uri = os.path.abspath(options.executor_uri)
 
+  # Currently the scheduler state is persisted locally and can be restored upon local restarts.
   # TODO(jyx): Support failover.
-  framework_info = FrameworkInfo(
-      user=options.framework_user,
-      name=FRAMEWORK_NAME,
-      checkpoint=True)
+  try:
+    state_provider = LocalStateProvider(options.work_dir)
+    state = state_provider.load_scheduler_state()
+  except StateProvider.Error as e:
+    app.error(e.message)
+
+  if state:
+    log.info("Successfully restored scheduler state")
+    framework_info = state.framework_info
+  else:
+    log.info("No scheduler state to restore")
+    framework_info = FrameworkInfo(
+        user=options.framework_user,
+        name=FRAMEWORK_NAME,
+        checkpoint=True)
+    state = Scheduler(framework_info)
+    state_provider.dump_scheduler_state(state)
 
   try:
     _, zk_servers, zk_root = zookeeper.parse(options.zk_url)
@@ -139,10 +163,9 @@ def main(args, options):
   kazoo = KazooClient(zk_servers)
   kazoo.start()
 
-  # TODO(jyx): Should not do this once scheduler failover is implemented.
-  kazoo.delete(zk_root, recursive=True)
-
   scheduler = MysosScheduler(
+      state,
+      state_provider,
       options.framework_user,
       options.executor_uri,
       options.executor_cmd,
@@ -153,9 +176,9 @@ def main(args, options):
       options.mysql_pkg_uri)
 
   scheduler_driver = mesos.native.MesosSchedulerDriver(
-    scheduler,
-    framework_info,
-    options.mesos_master)
+      scheduler,
+      framework_info,
+      options.mesos_master)
 
   scheduler_driver.start()
 
