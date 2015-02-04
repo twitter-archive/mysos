@@ -1,11 +1,11 @@
 from collections import OrderedDict
+import posixpath
 import random
 import threading
 import string
 
 from twitter.common import log
 from twitter.common.collections.orderedset import OrderedSet
-from twitter.mysos.common import zookeeper
 from twitter.mysos.common.cluster import get_cluster_path
 from twitter.mysos.common.decorators import logged
 
@@ -68,8 +68,8 @@ class MysosScheduler(mesos.interface.Scheduler):
 
     self._driver = None  # Will be set by registered().
 
-    self._zk_url = zk_url
-    self._zk_root = zookeeper.parse(zk_url)[2]
+    # Use a subdir to avoid name collision with the state storage.
+    self._discover_zk_url = posixpath.join(zk_url, "discover")
     self._kazoo = kazoo
 
     self._tasks = {}  # {Task ID: cluster name} mappings.
@@ -97,7 +97,7 @@ class MysosScheduler(mesos.interface.Scheduler):
             self._driver,
             cluster,
             self._state_provider,
-            self._zk_url,
+            self._discover_zk_url,
             self._kazoo,
             self._framework_user,
             self._executor_uri,
@@ -152,11 +152,12 @@ class MysosScheduler(mesos.interface.Scheduler):
       cluster = MySQLCluster(cluster_name, cluster_user, gen_password(), int(num_nodes))
       self._state_provider.dump_cluster_state(cluster)
 
+      log.info("Creating launcher for cluster %s" % cluster_name)
       self._launchers[cluster_name] = MySQLClusterLauncher(
           self._driver,
           cluster,
           self._state_provider,
-          self._zk_url,
+          self._discover_zk_url,
           self._kazoo,
           self._framework_user,
           self._executor_uri,
@@ -165,7 +166,7 @@ class MysosScheduler(mesos.interface.Scheduler):
           self._admin_keypath,
           self._mysql_pkg_uri)
 
-      return get_cluster_path(self._zk_url, cluster_name), cluster.password
+      return get_cluster_path(self._discover_zk_url, cluster_name), cluster.password
 
   def _stop(self):
     """Stop the scheduler."""

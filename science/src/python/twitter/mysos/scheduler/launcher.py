@@ -260,7 +260,6 @@ class MySQLClusterLauncher(object):
           self.cluster_name,
           mesos_pb2.TaskState.Name(previous_state),
           mesos_pb2.TaskState.Name(status.state)))
-
       task.state = status.state
 
       if status.state == mesos_pb2.TASK_RUNNING:

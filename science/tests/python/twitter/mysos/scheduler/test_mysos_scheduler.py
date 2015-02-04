@@ -1,5 +1,6 @@
 import getpass
 import os
+import posixpath
 import subprocess
 
 from twitter.common import log
@@ -79,7 +80,7 @@ def test_scheduler_runs():
   # A slave is promoted to be the master.
   deadline(
       lambda: wait_for_master(
-          get_cluster_path(zk_url, cluster_name),
+          get_cluster_path(posixpath.join(zk_url, 'discover'), cluster_name),
           zk_client),
       Amount(40, Time.SECONDS))
 

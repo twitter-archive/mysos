@@ -5,12 +5,14 @@ from twitter.common import app, log
 from twitter.common.exceptions import ExceptionalThread
 from twitter.common.http import HttpServer
 from twitter.common.log.options import LogOptions
+from twitter.common.quantity import Time
 from twitter.common.quantity.parse_simple import InvalidTime, parse_time
 from twitter.mysos.common import zookeeper
 
 from .http import MysosServer
 from .scheduler import MysosScheduler
 from .state import LocalStateProvider, Scheduler, StateProvider
+from .zk_state import ZooKeeperStateProvider
 
 from kazoo.client import KazooClient
 
@@ -44,33 +46,30 @@ app.add_option(
     '--executor_uri',
     dest='executor_uri',
     default=None,
-    help='URI for the Mysos executor package',
-)
+    help='URI for the Mysos executor package')
 
 
 app.add_option(
     '--mysql_pkg_uri',
     dest='mysql_pkg_uri',
     default=None,
-    help='URI for the MySQL package',
-)
+    help='URI for the MySQL package')
 
 
 app.add_option(
     '--executor_cmd',
     dest='executor_cmd',
     default=None,
-    help='Command to execute the executor package',
-)
+    help='Command to execute the executor package')
 
 
 app.add_option(
     '--zk_url',
     dest='zk_url',
     default=None,
-    help='ZooKeeper URL for communicating MySQL cluster information between Mysos scheduler and '
-         'executors',
-)
+    help='ZooKeeper URL for various Mysos operations, in the form of '
+         '"zk://username:password@servers/path". The sub-directory <zk_url>/discover is used for '
+         'communicating MySQL cluster information between Mysos scheduler and executors')
 
 
 # TODO(jyx): This could also be made a per-cluster configuration.
@@ -80,24 +79,38 @@ app.add_option(
     default='60s',
     help='The amount of time the scheduler waits for all slaves to respond during a MySQL master '
          'election, e.g., 60s. After the timeout the master is elected from only the slaves that '
-         'have responded',
-)
+         'have responded')
 
 
 app.add_option(
     '--admin_keypath',
     dest='admin_keypath',
     default=None,
-    help='The path to the key file with MySQL admin credentials on Mesos slaves',
-)
+    help='The path to the key file with MySQL admin credentials on Mesos slaves')
 
 
 app.add_option(
     '--work_dir',
     dest='work_dir',
     default=os.path.join(tempfile.gettempdir(), 'mysos'),
-    help='Directory path to place Mysos work directories'
-)
+    help='Directory path to place Mysos work directories')
+
+
+app.add_option(
+    '--state_storage',
+    dest='state_storage',
+    default='zk',
+    help="Mechanism to persist scheduler state. Available options are 'zk' and 'local'. If 'zk' is "
+         "chosen, the scheduler state is stored under <zk_url>/state; see --zk_url. Otherwise "
+         "'local' is chosen and the state is persisted under <work_dir>/state; see --work_dir")
+
+
+app.add_option(
+    '--framework_failover_timeout',
+    dest='framework_failover_timeout',
+    default='14d',
+    help='Time after which Mysos framework is considered deleted. This implies losing all tasks. '
+         'SHOULD BE VERY HIGH')
 
 
 FRAMEWORK_NAME = 'mysos'
@@ -130,15 +143,26 @@ def main(args, options):
 
   try:
     election_timeout = parse_time(options.election_timeout)
+    framework_failover_timeout = parse_time(options.framework_failover_timeout)
   except InvalidTime as e:
     app.error(e.message)
 
-  options.executor_uri = os.path.abspath(options.executor_uri)
-
-  # Currently the scheduler state is persisted locally and can be restored upon local restarts.
-  # TODO(jyx): Support failover.
   try:
+    _, zk_servers, zk_root = zookeeper.parse(options.zk_url)
+  except Exception as e:
+    app.error("Invalid --zk_url: %s" % e.message)
+
+  kazoo = KazooClient(zk_servers)
+  kazoo.start()
+
+  if options.state_storage == 'zk':
+    log.info("Using ZooKeeper (path: %s) for state storage" % zk_root)
+    state_provider = ZooKeeperStateProvider(kazoo, zk_root)
+  else:
+    log.info("Using local disk for state storage")
     state_provider = LocalStateProvider(options.work_dir)
+
+  try:
     state = state_provider.load_scheduler_state()
   except StateProvider.Error as e:
     app.error(e.message)
@@ -151,17 +175,10 @@ def main(args, options):
     framework_info = FrameworkInfo(
         user=options.framework_user,
         name=FRAMEWORK_NAME,
-        checkpoint=True)
+        checkpoint=True,
+        failover_timeout=framework_failover_timeout.as_(Time.SECONDS))
     state = Scheduler(framework_info)
     state_provider.dump_scheduler_state(state)
-
-  try:
-    _, zk_servers, zk_root = zookeeper.parse(options.zk_url)
-  except Exception as e:
-    app.error("Invalid --zk_url: %s" % e.message)
-
-  kazoo = KazooClient(zk_servers)
-  kazoo.start()
 
   scheduler = MysosScheduler(
       state,

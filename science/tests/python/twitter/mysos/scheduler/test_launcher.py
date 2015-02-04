@@ -3,7 +3,6 @@ import os
 import shutil
 import tempfile
 import threading
-import unittest
 
 from twitter.common import log
 from twitter.common.concurrent import deadline
@@ -12,6 +11,7 @@ from twitter.mysos.common.cluster import get_cluster_path, wait_for_master
 from twitter.mysos.common.testing import Fake
 from twitter.mysos.scheduler.launcher import create_resources, MySQLClusterLauncher
 from twitter.mysos.scheduler.state import LocalStateProvider, MySQLCluster
+from twitter.mysos.scheduler.zk_state import ZooKeeperStateProvider
 
 from kazoo.handlers.threading import SequentialThreadingHandler
 import mesos.interface.mesos_pb2 as mesos_pb2
@@ -31,8 +31,9 @@ if 'MYSOS_DEBUG' in os.environ:
 class FakeDriver(Fake): pass
 
 
-class TestLauncher(unittest.TestCase):
-  def setUp(self):
+class TestLauncher(object):
+  @pytest.fixture(params=[LocalStateProvider, ZooKeeperStateProvider], autouse=True)
+  def setup(self, request):
     self._driver = FakeDriver()
     self._storage = FakeStorage(SequentialThreadingHandler())
     self._zk_client = FakeClient(storage=self._storage)
@@ -54,8 +55,13 @@ class TestLauncher(unittest.TestCase):
     self._zk_url = "zk://host/mysos/test"
     self._cluster = MySQLCluster("cluster0", "user", "pass", 3)
 
-    self._tmpdir = tempfile.mkdtemp()
-    self._state_provider = LocalStateProvider(self._tmpdir)
+    # Construct the state provider based on the test parameter.
+    if request.param == LocalStateProvider:
+      tmpdir = tempfile.mkdtemp()
+      self._state_provider = LocalStateProvider(tmpdir)
+      request.addfinalizer(lambda: shutil.rmtree(tmpdir, True))  # Clean up after ourselves.
+    elif request.param == ZooKeeperStateProvider:
+      self._state_provider = ZooKeeperStateProvider(self._zk_client, "/mysos/test")
 
     self._launcher = MySQLClusterLauncher(
         self._driver,
@@ -72,16 +78,15 @@ class TestLauncher(unittest.TestCase):
         query_interval=Amount(150, Time.MILLISECONDS))  # Short interval.
 
     self._elected = threading.Event()
+    self._launchers = [self._launcher]  # See teardown().
 
-    self._launchers = [self._launcher]  # See tearDown().
+    request.addfinalizer(self.teardown)
 
-  def tearDown(self):
+  def teardown(self):
     for launcher in self._launchers:
       if launcher._elector:
         launcher._elector.abort()  # Abort the thread even if the election is pending.
         launcher._elector.join()
-
-    shutil.rmtree(self._tmpdir, True)  # Clean up after ourselves.
 
   def test_launch_cluster_all_nodes_successful(self):
     for i in range(self._cluster.num_nodes):
