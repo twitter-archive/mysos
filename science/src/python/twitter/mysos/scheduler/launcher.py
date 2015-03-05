@@ -15,7 +15,7 @@ import mesos.interface.mesos_pb2 as mesos_pb2
 
 
 # TODO(jyx): Replace this when we start taking tasks from an HTTP API.
-TASK_CPUS = 0.1
+TASK_CPUS = 1
 TASK_MEM = 512
 
 
