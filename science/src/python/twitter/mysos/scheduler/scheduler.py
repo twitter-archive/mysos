@@ -34,7 +34,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       zk_url,
       election_timeout,
       admin_keypath,
-      mysql_pkg_uri):
+      installer_args):
     """
       :param state: The Scheduler object.
       :param state_provider: The StateProvider instance that the scheduler should use to
@@ -44,7 +44,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       :param executor_cmd: See flags.
       :param election_timeout: See flags.
       :param admin_keypath: See flags.
-      :param mysql_pkg_uri: See flags.
+      :param installer_args: See flags.
       :param kazoo: The Kazoo client for communicating MySQL cluster information between the
                     scheduler and the executors.
       :param zk_url: ZooKeeper URL for used by the scheduler and the executors to access ZooKeeper.
@@ -64,7 +64,7 @@ class MysosScheduler(mesos.interface.Scheduler):
     self._executor_cmd = executor_cmd
     self._election_timeout = election_timeout
     self._admin_keypath = admin_keypath
-    self._mysql_pkg_uri = mysql_pkg_uri
+    self._installer_args = installer_args
 
     self._driver = None  # Will be set by registered().
 
@@ -104,7 +104,7 @@ class MysosScheduler(mesos.interface.Scheduler):
             self._executor_cmd,
             self._election_timeout,
             self._admin_keypath,
-            self._mysql_pkg_uri)  # Order of launchers is preserved.
+            self._installer_args)  # Order of launchers is preserved.
       except StateProvider.Error as e:
         raise self.Error("Failed to recover cluster: %s" % e.message)
 
@@ -164,7 +164,7 @@ class MysosScheduler(mesos.interface.Scheduler):
           self._executor_cmd,
           self._election_timeout,
           self._admin_keypath,
-          self._mysql_pkg_uri)
+          self._installer_args)
 
       return get_cluster_path(self._discover_zk_url, cluster_name), cluster.password
 

@@ -50,13 +50,6 @@ app.add_option(
 
 
 app.add_option(
-    '--mysql_pkg_uri',
-    dest='mysql_pkg_uri',
-    default=None,
-    help='URI for the MySQL package')
-
-
-app.add_option(
     '--executor_cmd',
     dest='executor_cmd',
     default=None,
@@ -113,6 +106,15 @@ app.add_option(
          'SHOULD BE VERY HIGH')
 
 
+app.add_option(
+    '--installer_args',
+    dest='installer_args',
+    default=None,
+    help='Arguments for MySQL installer directly passed along to and parsed by the installer. e.g.,'
+         ' a serialized JSON string'
+)
+
+
 FRAMEWORK_NAME = 'mysos'
 
 
@@ -128,9 +130,6 @@ def main(args, options):
 
   if options.executor_uri is None:
     app.error('Must specify --executor_uri')
-
-  if options.mysql_pkg_uri is None:
-    app.error('Must specify --mysql_pkg_uri')
 
   if options.executor_cmd is None:
     app.error('Must specify --executor_cmd')
@@ -190,7 +189,7 @@ def main(args, options):
       options.zk_url,
       election_timeout,
       options.admin_keypath,
-      options.mysql_pkg_uri)
+      options.installer_args)
 
   scheduler_driver = mesos.native.MesosSchedulerDriver(
       scheduler,

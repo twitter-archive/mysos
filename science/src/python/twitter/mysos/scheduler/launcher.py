@@ -43,7 +43,7 @@ class MySQLClusterLauncher(object):
       executor_cmd,
       election_timeout,
       admin_keypath,
-      mysql_pkg_uri,
+      installer_args,
       query_interval=Amount(1, Time.SECONDS)):
     """
       :param driver: Mesos scheduler driver.
@@ -55,7 +55,7 @@ class MySQLClusterLauncher(object):
       :param executor_cmd: See flags.
       :param election_timeout: See flags.
       :param admin_keypath: See flags.
-      :param mysql_pkg_uri: See flags.
+      :param installer_args: See flags.
       :param query_interval: See MySQLMasterElector. Use the default value for production and allow
                              tests to use a different value.
     """
@@ -76,7 +76,7 @@ class MySQLClusterLauncher(object):
     self._executor_cmd = executor_cmd
     self._election_timeout = election_timeout
     self._admin_keypath = admin_keypath
-    self._mysql_pkg_uri = mysql_pkg_uri
+    self._installer_args = installer_args
 
     # Used by the elector.
     self._query_interval = query_interval
@@ -195,7 +195,7 @@ class MySQLClusterLauncher(object):
         'server_id': server_id,  # Use the integer Task ID as the server ID.
         'zk_url': self._zk_url,
         'admin_keypath': self._admin_keypath,
-        'mysql_pkg_uri': self._mysql_pkg_uri
+        'installer_args': self._installer_args
     })
 
     resources = create_resources(task_cpus, task_mem, set([task_port]))

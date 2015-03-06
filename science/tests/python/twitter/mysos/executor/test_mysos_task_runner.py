@@ -6,6 +6,7 @@ from twitter.common.concurrent import deadline
 from twitter.common.quantity import Amount, Time
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
 from twitter.mysos.common.cluster import ClusterManager
+from twitter.mysos.executor.noop_installer import NoopPackageInstaller
 from twitter.mysos.executor.mysos_task_runner import MysosTaskRunner
 from twitter.mysos.executor.task_runner import TaskError
 from twitter.mysos.executor.testing import FakeTaskControl
@@ -40,6 +41,7 @@ class TestTaskRunner(unittest.TestCase):
         self._self_instance,
         self._client,
         "/home/test/my_cluster",
+        NoopPackageInstaller(),
         task_control)
     runner.start()
     assert runner.stop()
@@ -53,6 +55,7 @@ class TestTaskRunner(unittest.TestCase):
         self._self_instance,
         self._client,
         "/home/test/my_cluster",
+        NoopPackageInstaller(),
         task_control)
 
     manager = ClusterManager(self._client, "/home/test/my_cluster")
@@ -78,6 +81,7 @@ class TestTaskRunner(unittest.TestCase):
         self._self_instance,
         self._client,
         "/home/test/my_cluster",
+        NoopPackageInstaller(),
         task_control)
 
     manager = ClusterManager(self._client, "/home/test/my_cluster")
@@ -99,6 +103,7 @@ class TestTaskRunner(unittest.TestCase):
         self._self_instance,
         self._client,
         "/home/test/my_cluster",
+        NoopPackageInstaller(),
         task_control)
 
     runner.start()
@@ -110,6 +115,7 @@ class TestTaskRunner(unittest.TestCase):
         self._self_instance,
         self._client,
         "/home/test/my_cluster",
+        NoopPackageInstaller(),
         task_control)
 
     with pytest.raises(TaskError) as e:
@@ -122,6 +128,7 @@ class TestTaskRunner(unittest.TestCase):
         self._self_instance,
         self._client,
         "/home/test/my_cluster",
+        NoopPackageInstaller(),
         task_control)
 
     manager = ClusterManager(self._client, "/home/test/my_cluster")
@@ -144,6 +151,7 @@ class TestTaskRunner(unittest.TestCase):
         self._self_instance,
         self._client,
         "/home/test/my_cluster",
+        NoopPackageInstaller(),
         task_control)
 
     runner.start()
@@ -155,6 +163,7 @@ class TestTaskRunner(unittest.TestCase):
         self._self_instance,
         self._client,
         "/home/test/my_cluster",
+        NoopPackageInstaller(),
         task_control)
 
     with pytest.raises(TaskError) as e:
@@ -175,6 +184,7 @@ done
       self._self_instance,
       self._client,
       "/home/test/my_cluster",
+      NoopPackageInstaller(),
       task_control)
 
     task_control._mysqld = cmd

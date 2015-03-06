@@ -7,10 +7,11 @@ from twitter.common import app, log
 from twitter.common.log.options import LogOptions
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
 from twitter.mysos.common import zookeeper
-from twitter.mysos.common.fetcher import Fetcher, FetcherFactory
 
 from .executor import MysosExecutor
 from .mysos_task_runner import MysosTaskRunner, TaskRunnerProvider
+from .noop_installer import NoopPackageInstaller
+from .sandbox import Sandbox
 from .testing import FakeTaskControlProvider
 
 import mesos.native
@@ -44,22 +45,16 @@ class TestingTaskRunnerProvider(TaskRunnerProvider):
         self_instance,
         zk_client,
         posixpath.join(path, cluster_name),
+        NoopPackageInstaller(),
         task_control)
-
-
-class FakeFetcher(Fetcher):
-  """A fetcher that does nothing."""
-
-  def fetch(self, uri, directory):
-    pass
 
 
 def main(args, options):
   log.info('Starting testing mysos executor')
 
-  FetcherFactory.register_fetcher('fake', FakeFetcher())
+  executor = MysosExecutor(
+      TestingTaskRunnerProvider(FakeTaskControlProvider()), Sandbox(SANDBOX_ROOT))
 
-  executor = MysosExecutor(TestingTaskRunnerProvider(FakeTaskControlProvider()), SANDBOX_ROOT)
   driver = mesos.native.MesosExecutorDriver(executor)
   driver.run()
 

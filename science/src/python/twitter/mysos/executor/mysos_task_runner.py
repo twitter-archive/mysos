@@ -8,10 +8,10 @@ import threading
 from twitter.common import log
 from twitter.common.concurrent import defer
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
-
 from twitter.mysos.common.cluster import ClusterListener, get_cluster_path
 from twitter.mysos.common.zookeeper import parse
 
+from .installer import PackageInstaller
 from .task_runner import TaskError, TaskRunner, TaskRunnerProvider
 from .task_control import TaskControl
 
@@ -19,8 +19,9 @@ from kazoo.client import KazooClient
 
 
 class MysosTaskRunnerProvider(TaskRunnerProvider):
-  def __init__(self, task_control_provider):
+  def __init__(self, task_control_provider, installer_provider):
     self._task_control_provider = task_control_provider
+    self._installer_provider = installer_provider
 
   def from_task(self, task, sandbox):
     data = json.loads(task.data)
@@ -32,13 +33,15 @@ class MysosTaskRunnerProvider(TaskRunnerProvider):
 
     try:
       task_control = self._task_control_provider.from_task(task, sandbox)
-    except TaskControl.Error as e:
+      installer = self._installer_provider.from_task(task, sandbox)
+    except (TaskControl.Error, PackageInstaller.Error) as e:
       raise TaskError(e.message)
 
     return MysosTaskRunner(
         self_instance,
         kazoo,
         get_cluster_path(path, cluster_name),
+        installer,
         task_control)
 
 
@@ -57,13 +60,18 @@ class MysosTaskRunner(TaskRunner):
                the subprocess using the task control.
   """
 
-  def __init__(self, self_instance, kazoo, cluster_root, task_control):
+  def __init__(self, self_instance, kazoo, cluster_root, installer, task_control):
     """
-    :param self_instance: The local ServiceInstance associated with this task runner.
-    :param kazoo: Kazoo client, it should be started before being passed in.
-    :param cluster_root: The ZooKeeper root path for *this cluster*.
-    :param task_control: The TaskControl that interacts with the task process.
+      :param self_instance: The local ServiceInstance associated with this task runner.
+      :param kazoo: Kazoo client, it should be started before being passed in.
+      :param cluster_root: The ZooKeeper root path for *this cluster*.
+      :param installer: The PackageInstaller for MySQL.
+      :param task_control: The TaskControl that interacts with the task process.
     """
+    self._installer = installer
+    self._env = None  # The environment variables for the 'task_control' commands. Set by the
+                      # installer.
+
     self._task_control = task_control
 
     self._lock = threading.Lock()
@@ -97,15 +105,21 @@ class MysosTaskRunner(TaskRunner):
         raise TaskError("Runner already started")
       self._started = True
 
+      # Can potentially hold the lock for a long time but it's OK since the runner is not accessed
+      # by multiple threads until after it's started; can be a noop as well, depending on the
+      # installer implementation.
       try:
+        self._env = self._installer.install()
+        log.info("Package installation completed. Resulting environment variables: %s" % self._env)
+
         # Store the process so we can kill it if necessary.
-        self._popen = self._task_control.start()
+        self._popen = self._task_control.start(env=self._env)
         log.info("Task started in subprocess %s" % self._popen.pid)
         defer(self._wait)
 
         # Only start listening to ZK events after the task subprocess has been successfully started.
         self._listener.start()
-      except CalledProcessError as e:
+      except (PackageInstaller.Error, CalledProcessError) as e:
         raise TaskError("Failed to start MySQL task: %s" % e)
 
   def _wait(self):
@@ -171,7 +185,7 @@ class MysosTaskRunner(TaskRunner):
       Get the log position of the MySQL slave. Return None if it cannot be obtained.
     """
     try:
-      log_position = self._task_control.get_log_position()
+      log_position = self._task_control.get_log_position(env=self._env)
       return log_position
     except CalledProcessError as e:
       raise TaskError("Unable to get the slave's log position: %s" % e)
@@ -199,7 +213,7 @@ class MysosTaskRunner(TaskRunner):
 
   def _promote(self):
     try:
-      self._task_control.promote()
+      self._task_control.promote(env=self._env)
     except CalledProcessError as e:
       self._result.put(TaskError("Failed to promote the slave: %s" % e))
       self.stop()
@@ -224,7 +238,10 @@ class MysosTaskRunner(TaskRunner):
 
   def _reparent(self, master):
     try:
-      self._task_control.reparent(master.service_endpoint.host, master.service_endpoint.port)
+      self._task_control.reparent(
+          master.service_endpoint.host,
+          master.service_endpoint.port,
+          env=self._env)
     except CalledProcessError as e:
       self._result.put(TaskError("Failed to reparent the slave: %s" % e))
       self.stop()

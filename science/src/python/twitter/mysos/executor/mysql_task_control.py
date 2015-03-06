@@ -5,14 +5,11 @@ import tarfile
 import threading
 
 from twitter.common import log
-from twitter.common.dirutil import safe_mkdir
 from twitter.common_internal.keybird.keybird import KeyBird
 from twitter.mysos.common.decorators import synchronized
 
+from .sandbox import Sandbox
 from .task_control import TaskControl, TaskControlProvider
-
-
-MYSQL_PKG_FILE = 'mysos_mysql.tar.gz'
 
 
 class MySQLTaskControlProvider(TaskControlProvider):
@@ -39,27 +36,9 @@ class MySQLTaskControlProvider(TaskControlProvider):
 
 
 class MySQLTaskControl(TaskControl):
-  """
-    MySQL task control expects the following directory hierarchy:
-
-    mysos_home/                # Home to this Mysos instance (i.e. executor sandbox).
-      mysos_mysql.tar.gz       # MySQL package file dropped here by the executor.
-      bin/                     # Binaries, executables.
-        mysql/scripts/         # Mysos scripts.
-          mysos_install_db.sh
-          ...
-      lib/
-        mysql/                 # The MySQL package extracted from 'mysos_mysql.tar.gz'.
-          bin/
-          scripts/
-          ...
-        auxiliary libraries    # Other libraries.
-      var/                     # For MySQL data dir, tmp dir, etc.
-  """
-
   def __init__(
       self,
-      mysos_home,
+      sandbox,
       framework_user,
       host,
       port,
@@ -69,7 +48,7 @@ class MySQLTaskControl(TaskControl):
       server_id,
       admin_keypath):
     """
-      :param mysos_home: The home directory where the mysos instance directories reside.
+      :param sandbox: The sandbox where all files of this Mysos executor instance reside.
       :param framework_user: The Unix user this framework runs as.
       :param host: The hostname of the host that runs the MySQL instance.
       :param port: The port of the MySQL instance.
@@ -78,7 +57,10 @@ class MySQLTaskControl(TaskControl):
       :param password: The MySQL password associated with 'cluster_user' in MySQL.
       :param server_id: The ID that identifies the MySQL instance.
     """
-    self._mysos_home = mysos_home
+    if not isinstance(sandbox, Sandbox):
+      raise TypeError("'sandbox' should be an instance of Sandbox")
+    self._sandbox = sandbox
+
     self._framework_user = framework_user
     self._host = host
     self._port = port
@@ -98,43 +80,25 @@ class MySQLTaskControl(TaskControl):
     self._lock = threading.Lock()
     self._process = None  # The singleton task process that launches mysqld.
 
-    self._scripts_dir = os.path.join(mysos_home, "bin", "mysql", "scripts")
+    self._scripts_dir = os.path.join(self._sandbox.bin, "mysql", "scripts")
     if not os.path.isdir(self._scripts_dir):
       raise TaskControl.Error("Scripts directory %s does not exist" % self._scripts_dir)
 
-    self._pkg_path = os.path.join(self._mysos_home, MYSQL_PKG_FILE)
-    self._lib_dir = os.path.join(self._mysos_home, 'lib')
-    safe_mkdir(self._lib_dir)
-    self._mysql_basedir = os.path.join(self._lib_dir, "mysql")
-    self._var_dir = os.path.join(self._mysos_home, "var")
-    safe_mkdir(self._var_dir)
-
-    self._mysql_env = dict(
-        PATH=os.pathsep.join([
-            os.path.join(self._mysql_basedir, 'bin'),  # mysqld, etc.
-            os.path.join(self._mysql_basedir, 'scripts'),  # mysql_install_db.
-            os.environ.get('PATH', '')]),
-        LD_LIBRARY_PATH=os.pathsep.join([
-            self._lib_dir,  # For auxiliary libs.
-            os.environ.get('LD_LIBRARY_PATH', '')]))
-
   @synchronized
-  def start(self):
+  def start(self, env=None):
     if self._process:
       return
 
-    log.info("Extracting %s" % self._pkg_path)
-    with tarfile.open(self._pkg_path, 'r') as tf:
-      tf.extractall(path=self._lib_dir)
-
+    # TODO(jyx): This is applicable only when we create a new DB instance. Move this into a state
+    # recovery abstraction.
     command = "%(cmd)s %(cluster_name)s %(port)s %(framework_user)s %(var_dir)s" % dict(
         cmd=os.path.join(self._scripts_dir, "mysos_install_db.sh"),
         cluster_name=self._cluster_name,
         port=self._port,
         framework_user=self._framework_user,
-        var_dir=self._var_dir)
+        var_dir=self._sandbox.var)
     log.info("Executing command: %s" % command)
-    subprocess.check_call(command, shell=True, env=self._mysql_env)
+    subprocess.check_call(command, shell=True, env=env)
 
     command = ('%(cmd)s %(cluster_name)s %(host)s %(port)s %(framework_user)s %(server_id)s '
         '%(var_dir)s' % dict(
@@ -144,23 +108,23 @@ class MySQLTaskControl(TaskControl):
             port=self._port,
             framework_user=self._framework_user,
             server_id=self._server_id,
-            var_dir=self._var_dir))
+            var_dir=self._sandbox.var))
     log.info("Executing command: %s" % command)
-    self._process = subprocess.Popen(command, shell=True, env=self._mysql_env)
+    self._process = subprocess.Popen(command, shell=True, env=env)
 
     # There is a delay before mysqld becomes available to accept requests. Wait for it.
     command = "%(cmd)s %(pid_file)s %(port)s %(timeout)s" % dict(
       cmd=os.path.join(self._scripts_dir, "mysos_wait_for_mysqld.sh"),
-      pid_file=os.path.join(self._var_dir, self._cluster_name, str(self._port), "mysqld.pid"),
+      pid_file=os.path.join(self._sandbox.var, self._cluster_name, str(self._port), "mysqld.pid"),
       port=self._port,
       timeout=10)
     log.info("Executing command: %s" % command)
-    subprocess.check_call(command, shell=True, env=self._mysql_env)
+    subprocess.check_call(command, shell=True, env=env)
 
     return self._process
 
   @synchronized
-  def reparent(self, master_host, master_port):
+  def reparent(self, master_host, master_port, env=None):
     command = ("%(cmd)s %(master_host)s %(master_port)s %(slave_host)s %(slave_port)s "
         "%(admin_user)s %(admin_password)s" % dict(
             cmd=os.path.join(self._scripts_dir, "mysos_reparent.sh"),
@@ -172,10 +136,10 @@ class MySQLTaskControl(TaskControl):
             admin_password=self._admin_password))
 
     log.info("Executing command: %s" % command)
-    subprocess.check_call(command, shell=True, env=self._mysql_env)
+    subprocess.check_call(command, shell=True, env=env)
 
   @synchronized
-  def promote(self):
+  def promote(self, env=None):
     command = ("%(cmd)s %(host)s %(port)s %(cluster_user)s %(password)s %(admin_user)s "
         "%(admin_password)s" % dict(
             cmd=os.path.join(self._scripts_dir, "mysos_promote_master.sh"),
@@ -188,17 +152,17 @@ class MySQLTaskControl(TaskControl):
 
     # TODO(jyx): Scrub the command log line to hide the password.
     log.info("Executing command: %s" % command)
-    subprocess.check_call(command, shell=True, env=self._mysql_env)
+    subprocess.check_call(command, shell=True, env=env)
 
   @synchronized
-  def get_log_position(self):
+  def get_log_position(self, env=None):
     command = '%(cmd)s %(host)s %(port)s' % dict(
         cmd=os.path.join(self._scripts_dir, "mysos_log_position.sh"),
         host=self._host,
         port=self._port)
 
     log.info("Executing command: %s" % command)
-    output = subprocess.check_output(command, shell=True, env=self._mysql_env).strip()
+    output = subprocess.check_output(command, shell=True, env=env).strip()
 
     if len(output.split(',')) == 2:
       log_file, log_position = output.split(',')  # log_file may be empty.

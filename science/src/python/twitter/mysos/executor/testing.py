@@ -40,7 +40,7 @@ class FakeTaskControl(TaskControl):
     self._process = None
 
   @synchronized
-  def start(self):
+  def start(self, env=None):
     if self._process:
       return
 
@@ -49,14 +49,14 @@ class FakeTaskControl(TaskControl):
     return self._process
 
   @synchronized
-  def reparent(self, master_host, master_port):
+  def reparent(self, master_host, master_port, env=None):
     subprocess.check_call(self._reparent_cmd, shell=True)
 
   @synchronized
-  def promote(self):
+  def promote(self, env=None):
     subprocess.check_call(self._promote_cmd, shell=True)
 
   @synchronized
-  def get_log_position(self):
+  def get_log_position(self, env=None):
     subprocess.check_call(self._get_log_position_cmd, shell=True)
     return self._position

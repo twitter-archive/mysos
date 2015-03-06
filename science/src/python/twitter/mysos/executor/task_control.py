@@ -24,32 +24,40 @@ class TaskControl(Interface):
     pass
 
   @abstractmethod
-  def start(self):
+  def start(self, env=None):
     """
     Start the task in a subprocess.
+
+    :param env: The 'env' necessary for 'subprocess' to run the command.
     :return: A subprocess.Popen object that represents the leader of the process group that executes
              the task.
-    """
+  """
     pass
 
   @abstractmethod
-  def reparent(self, master_host, master_port):
+  def reparent(self, master_host, master_port, env=None):
     """
       Reparent the MySQL slave to the new master.
+
+      :param env: The 'env' necessary for 'subprocess' to run the command.
     """
     pass
 
   @abstractmethod
-  def promote(self):
+  def promote(self, env=None):
     """
       Promote a slave to mastership.
+
+      :param env: The 'env' necessary for 'subprocess' to run the command.
     """
     pass
 
   @abstractmethod
-  def get_log_position(self):
+  def get_log_position(self, env=None):
     """
       Retrieve the log position from mysqld.
+
+      :param env: The 'env' necessary for 'subprocess' to run the command.
       :return: The log position, None if it cannot be obtained.
     """
     pass

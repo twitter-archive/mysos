@@ -4,12 +4,12 @@ import stat
 from twitter.common import app, log
 from twitter.common.dirutil import safe_mkdir
 from twitter.common.log.options import LogOptions
-from twitter.mysos.common.fetcher import FetcherFactory
-from twitter.mysos.common.hdfs import HDFSFetcher
 
 from .executor import MysosExecutor
 from .mysql_task_control import MySQLTaskControlProvider
 from .mysos_task_runner import MysosTaskRunnerProvider
+from .sandbox import Sandbox
+from .twitter_installer import TwitterPackageInstallerProvider
 
 import mesos.native
 import pkg_resources
@@ -47,13 +47,10 @@ def unpack_assets(asset_path):
 def main(args, options):
   unpack_assets(ASSET_RELPATH)  # Unpack files.
 
-  FetcherFactory.register_fetcher('hdfs', HDFSFetcher())
-  FetcherFactory.register_fetcher('hftp', HDFSFetcher())
-
   log.info("Starting Mysos executor within sandbox %s" % SANDBOX_ROOT)
   executor = MysosExecutor(
-      MysosTaskRunnerProvider(MySQLTaskControlProvider()),
-      sandbox=SANDBOX_ROOT)
+      MysosTaskRunnerProvider(MySQLTaskControlProvider(), TwitterPackageInstallerProvider()),
+      sandbox=Sandbox(SANDBOX_ROOT))
   driver = mesos.native.MesosExecutorDriver(executor)
   driver.run()
 
