@@ -35,7 +35,7 @@ def test_scheduler_runs():
 
   # Make sure testing_mysos_executor.pex is built and available to be fetched by Mesos slave.
   assert subprocess.call(
-      ["./pants", "src/python/twitter/mysos/executor:testing_mysos_executor"]) == 0
+      ["./pants", "goal", "binary", "tests/python/twitter/mysos/executor:testing_mysos_executor"]) == 0
 
   storage = FakeStorage(SequentialThreadingHandler())
   zk_client = FakeClient(storage=storage)

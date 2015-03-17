@@ -21,7 +21,7 @@ def build_and_execute_pex_target(target, binary):
     :param target: The pants target.
     :param binary: The path to the pex binary relative to the root of the repository.
   """
-  assert subprocess.call(["./pants", target]) == 0
+  assert subprocess.call(["./pants", "goal", "binary", target]) == 0
 
   p = subprocess.Popen([binary, "--help"], stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
   out, err = p.communicate()
