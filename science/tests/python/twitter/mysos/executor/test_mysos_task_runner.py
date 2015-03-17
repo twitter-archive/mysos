@@ -9,7 +9,7 @@ from twitter.mysos.common.cluster import ClusterManager
 from twitter.mysos.executor.noop_installer import NoopPackageInstaller
 from twitter.mysos.executor.mysos_task_runner import MysosTaskRunner
 from twitter.mysos.executor.task_runner import TaskError
-from twitter.mysos.executor.testing import FakeTaskControl
+from twitter.mysos.executor.testing.fake import FakeTaskControl
 
 from kazoo.handlers.threading import SequentialThreadingHandler
 import pytest

@@ -1,3 +1,5 @@
+"""This module is for all fake implementations of things in Mysos executor for testing."""
+
 import os
 import random
 import subprocess
@@ -27,7 +29,7 @@ class FakeTaskControl(TaskControl):
       position=1):
     """
       :param mysqld: The command that 'simulates' mysqld (and does nothing).
-      :param *_cmd: The commands that are executed for the respective NopTaskControl operations.
+      :param *_cmd: The commands that are executed for the respective FakeTaskControl operations.
       :param position: The 'mysqld' log position to return as the result of get_log_position().
     """
     self._lock = threading.Lock()

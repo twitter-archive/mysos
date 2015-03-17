@@ -1,15 +1,19 @@
+"""This 'testing' executor is built to be run in the vagrant VM.
+
+It is basically the same as the normal Mysos executor except that it doesn't rely on HDFS.
+"""
+
 import os
 import stat
 
 from twitter.common import app, log
 from twitter.common.log.options import LogOptions
 from twitter.mysos.common.pkgutil import unpack_assets
-
-from .executor import MysosExecutor
-from .mysql_task_control import MySQLTaskControlProvider
-from .mysos_task_runner import MysosTaskRunnerProvider
-from .sandbox import Sandbox
-from .twitter_installer import TwitterPackageInstallerProvider
+from twitter.mysos.executor.mysql_task_control import MySQLTaskControlProvider
+from twitter.mysos.executor.executor import MysosExecutor
+from twitter.mysos.executor.mysos_task_runner import MysosTaskRunnerProvider
+from twitter.mysos.executor.noop_installer import NoopPackageInstallerProvider
+from twitter.mysos.executor.sandbox import Sandbox
 
 import mesos.native
 
@@ -31,9 +35,9 @@ def main(args, options):
 
   unpack_assets(sandbox_root, MYSOS_MODULE, ASSET_RELPATH, execute=chmod_scripts)
 
-  log.info("Starting Mysos executor within sandbox %s" % sandbox_root)
+  log.info("Starting Vagrant Mysos executor within sandbox %s" % sandbox_root)
   executor = MysosExecutor(
-      MysosTaskRunnerProvider(MySQLTaskControlProvider(), TwitterPackageInstallerProvider()),
+      MysosTaskRunnerProvider(MySQLTaskControlProvider(), NoopPackageInstallerProvider()),
       sandbox=Sandbox(sandbox_root))
   driver = mesos.native.MesosExecutorDriver(executor)
   driver.run()

@@ -7,12 +7,12 @@ from twitter.common import app, log
 from twitter.common.log.options import LogOptions
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
 from twitter.mysos.common import zookeeper
+from twitter.mysos.executor.executor import MysosExecutor
+from twitter.mysos.executor.mysos_task_runner import MysosTaskRunner, TaskRunnerProvider
+from twitter.mysos.executor.noop_installer import NoopPackageInstaller
+from twitter.mysos.executor.sandbox import Sandbox
 
-from .executor import MysosExecutor
-from .mysos_task_runner import MysosTaskRunner, TaskRunnerProvider
-from .noop_installer import NoopPackageInstaller
-from .sandbox import Sandbox
-from .testing import FakeTaskControlProvider
+from .fake import FakeTaskControlProvider
 
 import mesos.native
 from zake.fake_client import FakeClient
@@ -21,7 +21,7 @@ from zake.fake_client import FakeClient
 SANDBOX_ROOT = os.path.join(os.path.realpath('.'), "sandbox")
 
 
-class TestingTaskRunnerProvider(TaskRunnerProvider):
+class FakeTaskRunnerProvider(TaskRunnerProvider):
   """
     Creates a MysosTaskRunner with FakeTaskControl for testing purposes.
     NOTE: zake is used so a running ZK server is not required.
@@ -53,7 +53,7 @@ def main(args, options):
   log.info('Starting testing mysos executor')
 
   executor = MysosExecutor(
-      TestingTaskRunnerProvider(FakeTaskControlProvider()), Sandbox(SANDBOX_ROOT))
+      FakeTaskRunnerProvider(FakeTaskControlProvider()), Sandbox(SANDBOX_ROOT))
 
   driver = mesos.native.MesosExecutorDriver(executor)
   driver.run()
