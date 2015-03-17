@@ -103,10 +103,58 @@ class TestScheduler(unittest.TestCase):
         Amount(5, Time.SECONDS),
         "/etc/mysos/admin_keyfile.yml",
         "hdfs://host/path")
+
+    # Scheduler always receives registered() with the same FrameworkID after failover.
+    scheduler2.registered(self._driver, self._framework_id, object())
+
     assert len(scheduler2._launchers) == 1
     assert scheduler2._launchers["cluster1"].cluster_name == "cluster1"
 
-    scheduler2.reregistered(self._driver, object())
+    # Scheduler has recovered the cluster so it doesn't accept another of the same name.
+    with pytest.raises(MysosScheduler.ClusterExists):
+      scheduler2.create_cluster("cluster1", "mysql_user", 3)
+
+  def test_scheduler_recovery_failure_before_launch(self):
+    scheduler1 = MysosScheduler(
+        self._state,
+        self._state_provider,
+        self._framework_user,
+        "./executor.pex",
+        "cmd.sh",
+        self._zk_client,
+        self._zk_url,
+        Amount(5, Time.SECONDS),
+        "/etc/mysos/admin_keyfile.yml",
+        "hdfs://host/path")
+    scheduler1.registered(self._driver, self._framework_id, object())
+    scheduler1.create_cluster("cluster1", "mysql_user", 3)
+
+    # Simulate restart before the task is successfully launched.
+    scheduler2 = MysosScheduler(
+        self._state,
+        self._state_provider,
+        self._framework_user,
+        "./executor.pex",
+        "cmd.sh",
+        self._zk_client,
+        self._zk_url,
+        Amount(5, Time.SECONDS),
+        "/etc/mysos/admin_keyfile.yml",
+        "hdfs://host/path")
+
+    assert len(scheduler2._launchers) == 0  # No launchers are recovered.
+
+    # Scheduler always receives registered() with the same FrameworkID after failover.
+    scheduler2.registered(self._driver, self._framework_id, object())
+
+    assert len(scheduler2._launchers) == 1
+    assert scheduler2._launchers["cluster1"].cluster_name == "cluster1"
+
+    # Now offer the resources for this task.
+    scheduler2.resourceOffers(self._driver, [self._offer])
+
+    # One task is launched for the offer.
+    assert len(scheduler2._launchers["cluster1"]._cluster.active_tasks) == 1
 
     # Scheduler has recovered the cluster so it doesn't accept another of the same name.
     with pytest.raises(MysosScheduler.ClusterExists):

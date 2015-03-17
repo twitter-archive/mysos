@@ -77,39 +77,6 @@ class MysosScheduler(mesos.interface.Scheduler):
                                      # mappings so cluster requests are fulfilled on a first come,
                                      # first serve (FCFS) basis.
 
-    # Recover launchers for existing clusters. A newly created scheduler has no launcher to recover.
-    # TODO(jyx): The recovery of clusters can potentially be parallelized.
-    for cluster_name in OrderedSet(self._state.clusters):  # Make a copy so we can remove dead
-                                                           # entries while iterating the copy.
-      log.info("Recovering launcher for cluster %s" % cluster_name)
-      try:
-        cluster = state_provider.load_cluster_state(cluster_name)
-        if not cluster:
-          # The scheduler could have failed over before creating the launcher. The user request
-          # should have failed and there is no cluster state to restore.
-          log.info("Skipping cluster %s because its state cannot be found" % cluster_name)
-          self._state.clusters.remove(cluster_name)
-          self._state_provider.dump_scheduler_state(self._state)
-          continue
-        for task_id in cluster.tasks:
-          self._tasks[task_id] = cluster.name  # Reconstruct the 'tasks' map.
-        self._launchers[cluster.name] = MySQLClusterLauncher(
-            self._driver,
-            cluster,
-            self._state_provider,
-            self._discover_zk_url,
-            self._kazoo,
-            self._framework_user,
-            self._executor_uri,
-            self._executor_cmd,
-            self._election_timeout,
-            self._admin_keypath,
-            self._installer_args)  # Order of launchers is preserved.
-      except StateProvider.Error as e:
-        raise self.Error("Failed to recover cluster: %s" % e.message)
-
-    log.info("Recovered %s clusters" % len(self._launchers))
-
     self.stopped = threading.Event()  # An event set when the scheduler is stopped.
     self.connected = threading.Event()  # An event set when the scheduler is first connected to
                                         # Mesos. The scheduler tolerates later disconnections.
@@ -183,7 +150,57 @@ class MysosScheduler(mesos.interface.Scheduler):
     self._driver = driver
     self._state.framework_info.id.value = frameworkId.value
     self._state_provider.dump_scheduler_state(self._state)
+
+    # Recover only after the scheduler is connected because it needs '_driver' to be assigned. This
+    # is blocking the scheduler driver thread but we do want further messages to be blocked until
+    # the scheduler state is fully recovered.
+    # TODO(jyx): If performance becomes an issue, we can also restore all the state data while the
+    # driver is connecting and proceed to recover all the internal state objects after the driver is
+    # connected.
+    try:
+      self._recover()
+    except self.Error as e:
+      log.error("Stopping scheduler because: %s" % e)
+      self._stop()
+      return
+
     self.connected.set()
+
+  def _recover(self):
+    """
+      Recover launchers for existing clusters. A newly created scheduler has no launcher to recover.
+      TODO(jyx): The recovery of clusters can potentially be parallelized.
+    """
+    for cluster_name in OrderedSet(self._state.clusters):  # Make a copy so we can remove dead
+                                                           # entries while iterating the copy.
+      log.info("Recovering launcher for cluster %s" % cluster_name)
+      try:
+        cluster = self._state_provider.load_cluster_state(cluster_name)
+        if not cluster:
+          # The scheduler could have failed over before creating the launcher. The user request
+          # should have failed and there is no cluster state to restore.
+          log.info("Skipping cluster %s because its state cannot be found" % cluster_name)
+          self._state.clusters.remove(cluster_name)
+          self._state_provider.dump_scheduler_state(self._state)
+          continue
+        for task_id in cluster.tasks:
+          self._tasks[task_id] = cluster.name  # Reconstruct the 'tasks' map.
+        self._launchers[cluster.name] = MySQLClusterLauncher(
+            self._driver,
+            cluster,
+            self._state_provider,
+            self._discover_zk_url,
+            self._kazoo,
+            self._framework_user,
+            self._executor_uri,
+            self._executor_cmd,
+            self._election_timeout,
+            self._admin_keypath,
+            self._installer_args)  # Order of launchers is preserved.
+      except StateProvider.Error as e:
+        raise self.Error("Failed to recover cluster: %s" % e.message)
+
+    log.info("Recovered %s clusters" % len(self._launchers))
 
   @logged
   def reregistered(self, driver, masterInfo):

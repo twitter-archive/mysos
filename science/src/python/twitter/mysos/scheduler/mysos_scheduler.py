@@ -151,6 +151,8 @@ def main(args, options):
   except Exception as e:
     app.error("Invalid --zk_url: %s" % e.message)
 
+  log.info("Starting Mysos scheduler")
+
   kazoo = KazooClient(zk_servers)
   kazoo.start()
 
@@ -169,6 +171,8 @@ def main(args, options):
   if state:
     log.info("Successfully restored scheduler state")
     framework_info = state.framework_info
+    if framework_info.HasField('id'):
+      log.info("Recovered scheduler's FrameworkID is %s" % framework_info.id.value)
   else:
     log.info("No scheduler state to restore")
     framework_info = FrameworkInfo(
