@@ -7,7 +7,9 @@ import unittest
 from twitter.common import log
 from twitter.common.quantity import Amount, Time
 from twitter.mysos.common.testing import Fake
-from twitter.mysos.scheduler.scheduler import MysosScheduler
+from twitter.mysos.scheduler.scheduler import (
+    INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION,
+    MysosScheduler)
 from twitter.mysos.scheduler.launcher import create_resources
 from twitter.mysos.scheduler.state import LocalStateProvider, MySQLCluster, Scheduler
 
@@ -159,3 +161,27 @@ class TestScheduler(unittest.TestCase):
     # Scheduler has recovered the cluster so it doesn't accept another of the same name.
     with pytest.raises(MysosScheduler.ClusterExists):
       scheduler2.create_cluster("cluster1", "mysql_user", 3)
+
+  def test_incompatible_resource_role(self):
+    scheduler1 = MysosScheduler(
+        self._state,
+        self._state_provider,
+        self._framework_user,
+        "./executor.pex",
+        "cmd.sh",
+        self._zk_client,
+        self._zk_url,
+        Amount(5, Time.SECONDS),
+        "/etc/mysos/admin_keyfile.yml",
+        "hdfs://host/path",
+        framework_role='mysos')  # Require 'mysos' but the resources are in '*'.
+    scheduler1.registered(self._driver, self._framework_id, object())
+    scheduler1.create_cluster("cluster1", "mysql_user", 3)
+    scheduler1.resourceOffers(self._driver, [self._offer])
+
+    assert "declineOffer" in self._driver.method_calls
+    assert len(self._driver.method_calls["declineOffer"]) == 1
+    # [0][0][1]: [First declineOffer call][The positional args][The first positional arg], which is
+    # a 'Filters' object.
+    assert (self._driver.method_calls["declineOffer"][0][0][1].refuse_seconds ==
+        INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION.as_(Time.SECONDS))

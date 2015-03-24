@@ -3,9 +3,11 @@ import posixpath
 import random
 import threading
 import string
+import sys
 
 from twitter.common import log
 from twitter.common.collections.orderedset import OrderedSet
+from twitter.common.quantity import Amount, Time
 from twitter.mysos.common.cluster import get_cluster_path
 from twitter.mysos.common.decorators import logged
 
@@ -13,6 +15,13 @@ from .launcher import MySQLClusterLauncher
 from .state import MySQLCluster, Scheduler, StateProvider
 
 import mesos.interface
+import mesos.interface.mesos_pb2 as mesos_pb2
+
+
+# Refuse the offer for "eternity".
+# NOTE: Using sys.maxint / 2 because sys.maxint causes rounding and precision loss when converted to
+# double 'refuse_seconds' in the ProtoBuf and results in a negative duration on Mesos Master.
+INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION = Amount(sys.maxint / 2, Time.NANOSECONDS)
 
 
 class MysosScheduler(mesos.interface.Scheduler):
@@ -34,7 +43,8 @@ class MysosScheduler(mesos.interface.Scheduler):
       zk_url,
       election_timeout,
       admin_keypath,
-      installer_args):
+      installer_args,
+      framework_role='*'):
     """
       :param state: The Scheduler object.
       :param state_provider: The StateProvider instance that the scheduler should use to
@@ -42,6 +52,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       :param framework_user: See flags.
       :param executor_uri: See flags.
       :param executor_cmd: See flags.
+      :param framework_role: See flags.
       :param election_timeout: See flags.
       :param admin_keypath: See flags.
       :param installer_args: See flags.
@@ -62,6 +73,7 @@ class MysosScheduler(mesos.interface.Scheduler):
     self._framework_user = framework_user
     self._executor_uri = executor_uri
     self._executor_cmd = executor_cmd
+    self._framework_role = framework_role
     self._election_timeout = election_timeout
     self._admin_keypath = admin_keypath
     self._installer_args = installer_args
@@ -131,7 +143,8 @@ class MysosScheduler(mesos.interface.Scheduler):
           self._executor_cmd,
           self._election_timeout,
           self._admin_keypath,
-          self._installer_args)
+          self._installer_args,
+          framework_role=self._framework_role)
 
       return get_cluster_path(self._discover_zk_url, cluster_name), cluster.password
 
@@ -185,6 +198,7 @@ class MysosScheduler(mesos.interface.Scheduler):
           continue
         for task_id in cluster.tasks:
           self._tasks[task_id] = cluster.name  # Reconstruct the 'tasks' map.
+        # Order of launchers is preserved.
         self._launchers[cluster.name] = MySQLClusterLauncher(
             self._driver,
             cluster,
@@ -196,7 +210,10 @@ class MysosScheduler(mesos.interface.Scheduler):
             self._executor_cmd,
             self._election_timeout,
             self._admin_keypath,
-            self._installer_args)  # Order of launchers is preserved.
+            self._installer_args,
+            self._framework_role)  # For recovered launchers we use the currently specified
+                                   # --framework_role and --use_dedicated_resources_only so that the
+                                   # change in flags can be picked up by existing clusters.
       except StateProvider.Error as e:
         raise self.Error("Failed to recover cluster: %s" % e.message)
 
@@ -223,17 +240,33 @@ class MysosScheduler(mesos.interface.Scheduler):
       # offers).
       for offer in shuffled(offers):
         task_id = None
+        # 'filters' is set when we need to create a special filter for incompatible roles.
+        filters = None
         # For each offer, launchers are asked to launch a task in the order they are added (FCFS).
         for name in self._launchers:
           launcher = self._launchers[name]
-          task_id, _ = launcher.launch(offer)
+          try:
+            task_id, _ = launcher.launch(offer)
+          except MySQLClusterLauncher.IncompatibleRoleError as e:
+            # This "error" is not severe and we expect this to occur frequently only when Mysos
+            # first joins the cluster. For a running Mesos cluster this should be somewhat rare
+            # because we refuse the offer "forever".
+            filters = mesos_pb2.Filters()
+            filters.refuse_seconds = INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION.as_(Time.SECONDS)
+            break  # No need to check with other launchers.
           if task_id:
             self._tasks[task_id] = launcher.cluster_name
-            # Move on to the next offer.
+            # No need to check with other launchers. 'filters' remains unset.
             break
-        if not task_id:
-          # No launcher can use this offer and we don't hoard offers.
-          self._driver.declineOffer(offer.id)
+        if task_id:
+          break  # Some launcher has used this offer. Move on to the next one.
+
+        if filters:
+          log.info("Declining offer %s for %s because '%s'" % (
+              offer.id.value, INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION, e))
+        else:
+          log.info("Declining offer %s because no launcher can use this offer" % offer.id.value)
+        self._driver.declineOffer(offer.id, filters)
 
   @logged
   def statusUpdate(self, driver, status):

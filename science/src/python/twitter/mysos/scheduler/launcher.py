@@ -30,6 +30,7 @@ class MySQLClusterLauncher(object):
   """
 
   class Error(Exception): pass
+  class IncompatibleRoleError(Error): pass
 
   def __init__(
       self,
@@ -44,6 +45,7 @@ class MySQLClusterLauncher(object):
       election_timeout,
       admin_keypath,
       installer_args,
+      framework_role='*',
       query_interval=Amount(1, Time.SECONDS)):
     """
       :param driver: Mesos scheduler driver.
@@ -56,6 +58,7 @@ class MySQLClusterLauncher(object):
       :param election_timeout: See flags.
       :param admin_keypath: See flags.
       :param installer_args: See flags.
+      :param framework_role: See flags.
       :param query_interval: See MySQLMasterElector. Use the default value for production and allow
                              tests to use a different value.
     """
@@ -68,6 +71,8 @@ class MySQLClusterLauncher(object):
     if not isinstance(state_provider, StateProvider):
       raise TypeError("'state_provider' should be an instance of StateProvider")
     self._state_provider = state_provider
+
+    self._framework_role = framework_role
 
     # Passed along to executors.
     self._zk_url = zk_url
@@ -121,13 +126,15 @@ class MySQLClusterLauncher(object):
         Task ID: Either the task ID of the task just launched or None if this offer is not used.
         Remaining resources: Resources from this offer that are unused by the task. If no task is
             launched, all the resources from the offer are returned.
+
+      :raises IncompatibleRoleError: Raised when the offer has some resource with incompatible role.
     """
     with self._lock:
       if len(self._cluster.active_tasks) == self._cluster.num_nodes:
         # All nodes of this cluster have been launched and none have died.
         return None, offer.resources
 
-      cpus, mem, ports = get_resources(offer.resources)
+      cpus, mem, ports = self._get_resources(offer.resources)
 
       # TODO(jyx): Replace the static resource requirements with what the user requests.
       task_cpus = TASK_CPUS
@@ -164,8 +171,36 @@ class MySQLClusterLauncher(object):
       self._driver.launchTasks(offer.id, [task_info])
 
       # Update the offer's resources and return them for other clusters to use.
-      remaining = create_resources(cpus - task_cpus, mem - task_mem, ports - set([task_port]))
+      remaining = create_resources(
+          cpus - task_cpus, mem - task_mem, ports - set([task_port]), role=self._framework_role)
       return task_info.task_id.value, remaining
+
+  def _get_resources(self, resources):
+    """Return a tuple of the resources: cpus, mem, set of ports."""
+    cpus, mem, ports = 0.0, 0, set()
+    for resource in resources:
+      # We do the following check:
+      # 1. We only care about the role of the resources we are going to use.
+      # 2. For this resource if it is not of the role we want we throw an exception. This implies
+      #    that when a slave offers resources that include both the '*' role and the Mysos framework
+      #    role we'll decline the entire offer. We expect Mesos slave hosts that run Mysos executors
+      #    to dedicate *all* its resources to it as we are not currently optimizing for the use
+      #    cases where Mysos tasks run side-by-side with tasks from other frameworks. This also
+      #    simplifies the launcher's role filtering logic.
+      #    TODO(jyx): Revisit this when the above assumption changes.
+      if resource.name in ('cpus', 'mem', 'ports') and resource.role != self._framework_role:
+        raise self.IncompatibleRoleError("Offered resource %s has role %s, expecting %s" % (
+            resource.name, resource.role, self._framework_role))
+
+      if resource.name == 'cpus':
+        cpus = resource.scalar.value
+      elif resource.name == 'mem':
+        mem = resource.scalar.value
+      elif resource.name == 'ports' and resource.ranges.range:
+        for r in resource.ranges.range:
+          ports |= set(range(r.begin, r.end + 1))
+
+    return cpus, mem, ports
 
   def _new_task(self, offer, task_cpus, task_mem, task_port):
     """Return a new task with the requested resources."""
@@ -198,7 +233,8 @@ class MySQLClusterLauncher(object):
         'installer_args': self._installer_args
     })
 
-    resources = create_resources(task_cpus, task_mem, set([task_port]))
+    resources = create_resources(
+        task_cpus, task_mem, set([task_port]), role=self._framework_role)
     task.resources.extend(resources)
 
     return task
@@ -396,36 +432,24 @@ class MySQLClusterLauncher(object):
 
 
 # --- Utility methods. ---
-def get_resources(resources):
-  """Return a tuple of the resources: cpus, mem, set of ports."""
-  cpus, mem, ports = 0.0, 0, set()
-  for resource in resources:
-    if resource.name == 'cpus':
-      cpus = resource.scalar.value
-    elif resource.name == 'mem':
-      mem = resource.scalar.value
-    elif resource.name == 'ports' and resource.ranges.range:
-      for r in resource.ranges.range:
-        ports |= set(range(r.begin, r.end + 1))
-
-  return cpus, mem, ports
-
-
-def create_resources(cpus, mem, ports):
+def create_resources(cpus, mem, ports, role='*'):
   """Return a list of 'Resource' protobuf for the provided resources."""
   cpus_resources = mesos_pb2.Resource()
   cpus_resources.name = 'cpus'
   cpus_resources.type = mesos_pb2.Value.SCALAR
+  cpus_resources.role = role
   cpus_resources.scalar.value = cpus
 
   mem_resources = mesos_pb2.Resource()
   mem_resources.name = 'mem'
   mem_resources.type = mesos_pb2.Value.SCALAR
+  mem_resources.role = role
   mem_resources.scalar.value = mem
 
   ports_resources = mesos_pb2.Resource()
   ports_resources.name = 'ports'
   ports_resources.type = mesos_pb2.Value.RANGES
+  ports_resources.role = role
   for port in ports:
     port_range = ports_resources.ranges.range.add()
     port_range.begin = port

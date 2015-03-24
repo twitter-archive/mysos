@@ -13,7 +13,8 @@ run = Process(
     '--executor_cmd=./mysos_executor.pex',
     '--zk_url=zk://mysos:mysos@zookeeperdev.atla.twitter.com:2181/mysos/test/clusters',
     '--admin_keypath=/etc/twkeys/mysos/mysos/admin.yml',
-    '--installer_args=\'{"mysql_pkg_uri": "hftp://hadoop-rt-nn.atla.twitter.com:50070/mesos/mysos/atla-test/mysos_mysql.tar.gz"}\''])
+    '--installer_args=\'{"mysql_pkg_uri": "hftp://hadoop-rt-nn.atla.twitter.com:50070/mesos/mysos/atla-test/mysos_mysql.tar.gz"}\'',
+    '--framework_role=mysos'])
 )
 
 resources = Resources(cpu=1, ram=(512*MB), disk=(512*MB))

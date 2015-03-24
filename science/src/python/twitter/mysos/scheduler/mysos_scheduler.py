@@ -43,6 +43,16 @@ app.add_option(
 
 
 app.add_option(
+    '--framework_role',
+    dest='framework_role',
+    default='*',
+    help="The role that Mysos framework runs as. If set, Mysos only uses Mesos pool resources with "
+         "that role. The default value '*' is what Mesos considers as the default role.\n"
+         "NOTE: Mesos master needs to be configured to allow the specified role. See its --roles "
+         "flag")
+
+
+app.add_option(
     '--executor_uri',
     dest='executor_uri',
     default=None,
@@ -179,7 +189,8 @@ def main(args, options):
         user=options.framework_user,
         name=FRAMEWORK_NAME,
         checkpoint=True,
-        failover_timeout=framework_failover_timeout.as_(Time.SECONDS))
+        failover_timeout=framework_failover_timeout.as_(Time.SECONDS),
+        role=options.framework_role)
     state = Scheduler(framework_info)
     state_provider.dump_scheduler_state(state)
 
@@ -193,7 +204,8 @@ def main(args, options):
       options.zk_url,
       election_timeout,
       options.admin_keypath,
-      options.installer_args)
+      options.installer_args,
+      framework_role=options.framework_role)
 
   scheduler_driver = mesos.native.MesosSchedulerDriver(
       scheduler,
