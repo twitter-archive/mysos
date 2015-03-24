@@ -7,7 +7,7 @@ from twitter.common.http import HttpServer
 from twitter.common.log.options import LogOptions
 from twitter.common.quantity import Time
 from twitter.common.quantity.parse_simple import InvalidTime, parse_time
-from twitter.mysos.common import zookeeper
+from twitter.mysos.common import pkgutil, zookeeper
 
 from .http import MysosServer
 from .scheduler import MysosScheduler
@@ -96,7 +96,8 @@ app.add_option(
     '--work_dir',
     dest='work_dir',
     default=os.path.join(tempfile.gettempdir(), 'mysos'),
-    help='Directory path to place Mysos work directories')
+    help="Directory path to place Mysos work directories, e.g., web assets, state files if "
+         "--state_storage=local. Default to a system temp directory.")
 
 
 app.add_option(
@@ -126,6 +127,8 @@ app.add_option(
 
 
 FRAMEWORK_NAME = 'mysos'
+MYSOS_MODULE = 'twitter.mysos.scheduler'
+ASSET_RELPATH = 'assets'
 
 
 def main(args, options):
@@ -160,6 +163,10 @@ def main(args, options):
     _, zk_servers, zk_root = zookeeper.parse(options.zk_url)
   except Exception as e:
     app.error("Invalid --zk_url: %s" % e.message)
+
+  web_assets_dir = os.path.join(options.work_dir, "web")
+  pkgutil.unpack_assets(web_assets_dir, MYSOS_MODULE, ASSET_RELPATH)
+  log.info("Extracted web assets into %s" % options.work_dir)
 
   log.info("Starting Mysos scheduler")
 
@@ -215,7 +222,7 @@ def main(args, options):
   scheduler_driver.start()
 
   server = HttpServer()
-  server.mount_routes(MysosServer(scheduler))
+  server.mount_routes(MysosServer(scheduler, web_assets_dir))
 
   et = ExceptionalThread(
       target=server.run, args=('0.0.0.0', options.api_port, 'cherrypy'))

@@ -1,11 +1,18 @@
 import json
+import shutil
+import tempfile
 import unittest
 
+from twitter.mysos.common import pkgutil
 from twitter.mysos.scheduler.http import MysosServer
 from twitter.mysos.scheduler.scheduler import MysosScheduler
 
 import pytest
 from webtest import AppError, TestApp
+
+
+MYSOS_MODULE = 'twitter.mysos.scheduler'
+ASSET_RELPATH = 'assets'
 
 
 class FakeScheduler(object):
@@ -26,9 +33,18 @@ class FakeScheduler(object):
 
 
 class TestHTTP(unittest.TestCase):
+  @classmethod
+  def setUpClass(cls):
+    cls.web_assets_dir = tempfile.mkdtemp()
+    pkgutil.unpack_assets(cls.web_assets_dir, MYSOS_MODULE, ASSET_RELPATH)
+
+  @classmethod
+  def tearDownClass(cls):
+    shutil.rmtree(cls.web_assets_dir)
+
   def setUp(self):
     self._scheduler = FakeScheduler()
-    self._app = TestApp(MysosServer(self._scheduler).app)
+    self._app = TestApp(MysosServer(self._scheduler, self.web_assets_dir).app)
 
   def test_create_cluster_successful(self):
     response = ('test_cluster_url', 'passwordfortestcluster')

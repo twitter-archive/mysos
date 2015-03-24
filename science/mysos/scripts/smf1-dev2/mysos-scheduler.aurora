@@ -12,6 +12,7 @@ run = Process(
     '--zk_url=zk://mysos:mysos@sdzktest.smf1.twitter.com:2181/mysos/dev2',
     '--framework_failover_timeout=1m',
     '--admin_keypath=/etc/twkeys/mysos/mysos/admin.yml',
+    '--work_dir=./mysos',
     '--installer_args=\'{"mysql_pkg_uri": "hdfs://hadoop-rt-nn.smf1.twitter.com:8020/mesos/mysos/smf1-dev2/mysos_mysql.tar.gz"}\''])
 )
 

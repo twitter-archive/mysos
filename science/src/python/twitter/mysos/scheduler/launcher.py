@@ -1,3 +1,4 @@
+from collections import namedtuple
 import json
 import random
 import threading
@@ -26,7 +27,7 @@ class MySQLClusterLauncher(object):
     Thread-safety:
       The launcher is thread-safe. It uses a separate thread to wait for the election result and
       can launch a new election within that thread. All other public methods are called from the
-      scheduler driver thread.
+      scheduler driver thread and the web UI threads.
   """
 
   class Error(Exception): pass
@@ -117,6 +118,13 @@ class MySQLClusterLauncher(object):
   @property
   def cluster_name(self):
     return self._cluster.name
+
+  @property
+  def cluster_info(self):
+    with self._lock:
+      ClusterInfo = namedtuple('ClusterInfo', ('name, user, num_nodes'))
+      return ClusterInfo(
+          name=self._cluster.name, user=self._cluster.user, num_nodes=self._cluster.num_nodes)
 
   def launch(self, offer):
     """

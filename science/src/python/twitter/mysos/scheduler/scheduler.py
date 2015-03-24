@@ -148,6 +148,15 @@ class MysosScheduler(mesos.interface.Scheduler):
 
       return get_cluster_path(self._discover_zk_url, cluster_name), cluster.password
 
+  @property
+  def clusters(self):
+    """
+      A generator for information about clusters.
+    """
+    with self._lock:
+      for launcher in self._launchers.values():
+        yield launcher.cluster_info
+
   def _stop(self):
     """Stop the scheduler."""
 
