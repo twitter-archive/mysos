@@ -1,7 +1,6 @@
 import json
 import os
 import subprocess
-import tarfile
 import threading
 
 from twitter.common import log
@@ -91,33 +90,33 @@ class MySQLTaskControl(TaskControl):
 
     # TODO(jyx): This is applicable only when we create a new DB instance. Move this into a state
     # recovery abstraction.
-    command = "%(cmd)s %(cluster_name)s %(port)s %(framework_user)s %(var_dir)s" % dict(
+    command = "%(cmd)s %(framework_user)s %(data_dir)s" % dict(
         cmd=os.path.join(self._scripts_dir, "mysos_install_db.sh"),
-        cluster_name=self._cluster_name,
-        port=self._port,
         framework_user=self._framework_user,
-        var_dir=self._sandbox.var)
+        data_dir=self._sandbox.mysql_data_dir)
     log.info("Executing command: %s" % command)
     subprocess.check_call(command, shell=True, env=env)
 
-    command = ('%(cmd)s %(cluster_name)s %(host)s %(port)s %(framework_user)s %(server_id)s '
-        '%(var_dir)s' % dict(
+    command = (
+        "%(cmd)s %(framework_user)s %(host)s %(port)s %(server_id)s %(data_dir)s %(log_dir)s "
+        "%(tmp_dir)s" % dict(
             cmd=os.path.join(self._scripts_dir, "mysos_launch_mysqld.sh"),
-            cluster_name=self._cluster_name,
+            framework_user=self._framework_user,
             host=self._host,
             port=self._port,
-            framework_user=self._framework_user,
             server_id=self._server_id,
-            var_dir=self._sandbox.var))
+            data_dir=self._sandbox.mysql_data_dir,
+            log_dir=self._sandbox.mysql_log_dir,
+            tmp_dir=self._sandbox.mysql_tmp_dir))
     log.info("Executing command: %s" % command)
     self._process = subprocess.Popen(command, shell=True, env=env)
 
     # There is a delay before mysqld becomes available to accept requests. Wait for it.
     command = "%(cmd)s %(pid_file)s %(port)s %(timeout)s" % dict(
-      cmd=os.path.join(self._scripts_dir, "mysos_wait_for_mysqld.sh"),
-      pid_file=os.path.join(self._sandbox.var, self._cluster_name, str(self._port), "mysqld.pid"),
-      port=self._port,
-      timeout=10)
+        cmd=os.path.join(self._scripts_dir, "mysos_wait_for_mysqld.sh"),
+        pid_file=os.path.join(self._sandbox.mysql_log_dir, "mysqld.pid"),
+        port=self._port,
+        timeout=10)
     log.info("Executing command: %s" % command)
     subprocess.check_call(command, shell=True, env=env)
 

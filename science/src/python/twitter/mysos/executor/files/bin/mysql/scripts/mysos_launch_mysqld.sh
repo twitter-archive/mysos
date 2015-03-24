@@ -2,34 +2,34 @@
 
 set -uex
 
-cluster=$1
+framework_user=$1
 host=$2
 port=$3
-user=$4
-serverid=$5
-sandbox=$6
+server_id=$4
+data_dir=$5
+log_dir=$6
+tmp_dir=$7
 
-instance_home=$sandbox/$cluster/$port
-
-# Expecting mysqld to be under $mysql_basedir/sbin/
+# Expecting mysqld to be under $mysql_basedir/bin/
 mysql_basedir=$(dirname $(dirname $(which mysqld)))
 
-# Need a temp directory under /tmp because the sandbox path is too long for '--socket'.
-tmp_dir=`mktemp -d`
+# Need a temp directory under /tmp because the sandbox path is too long for '--socket'. We also need
+# this path to be unique on the host.
+socket_tmp=`mktemp -d`
 
 # Start the server in read only mode.
 mysqld \
   --no-defaults \
-  --datadir=$instance_home/data \
-  --user=$user \
+  --datadir=$data_dir \
+  --user=$framework_user \
   --port=$port \
   --bind-address=0.0.0.0 \
-  --socket=$tmp_dir/mysqld.sock \
-  --pid-file=$instance_home/mysqld.pid \
+  --socket=$socket_tmp/mysqld.sock \
+  --pid-file=$log_dir/mysqld.pid \
   --basedir=$mysql_basedir \
-  --tmpdir=$instance_home/tmp \
-  --log_error=$instance_home/error.log \
-  --server-id=$serverid \
+  --tmpdir=$tmp_dir \
+  --log_error=$data_dir/error.log \
+  --server-id=$server_id \
   --log-bin=master-bin \
   --log-bin-index=master-bin.index \
   --log-slave-updates \
