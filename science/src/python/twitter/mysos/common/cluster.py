@@ -1,6 +1,7 @@
 import Queue
 import functools
 import posixpath
+import sys
 import threading
 
 from twitter.common import log
@@ -271,4 +272,6 @@ def wait_for_master(cluster_url, zk_client=None):
   """
   master = Queue.Queue()
   resolve_master(cluster_url, lambda x: master.put(x), zk_client)
-  return master.get(True)
+  # Block forever but using sys.maxint makes the wait interruptable by Ctrl-C. See
+  # http://bugs.python.org/issue1360.
+  return master.get(True, sys.maxint)

@@ -15,40 +15,35 @@ from sqlalchemy.exc import OperationalError
 
 
 app.add_option(
-  '--api_host',
-  dest='api_host',
-  help='Host for the HTTP API server'
-)
+    '--api_host',
+    dest='api_host',
+    help='Host for the HTTP API server')
 
 
 app.add_option(
-  '--api_port',
-  dest='api_port',
-  type='int',
-  help='Port for the HTTP API server'
-)
+    '--api_port',
+    dest='api_port',
+    type='int',
+    help='Port for the HTTP API server')
 
 
 app.add_option(
-  '--cluster',
-  dest='cluster_name',
-  help='Name of the MySQL cluster to create'
-)
+    '--cluster',
+    dest='cluster_name',
+    help='Name of the MySQL cluster to create')
 
 
 app.add_option(
-  '--cluster_user',
-  dest='cluster_user',
-  help='MySQL user name the of cluster'
-)
+    '--cluster_user',
+    dest='cluster_user',
+    help='MySQL user name the of cluster')
 
 
 app.add_option(
-  '--num_nodes',
-  dest='num_nodes',
-  type='int',
-  help='Number of nodes this cluster should have'
-)
+    '--num_nodes',
+    dest='num_nodes',
+    type='int',
+    help='Number of nodes this cluster should have')
 
 
 def main(args, options):

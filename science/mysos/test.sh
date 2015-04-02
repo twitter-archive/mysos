@@ -2,7 +2,7 @@
 
 host="192.168.33.7"
 port=55001
-cluster_name="test_cluster"
+cluster_name="test_cluster$((RANDOM % 1000))"
 num_nodes=2
 cluster_user="mysos"
 
