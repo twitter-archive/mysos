@@ -275,6 +275,9 @@ class MysosScheduler(mesos.interface.Scheduler):
               offer.id.value, INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION, e))
         else:
           log.info("Declining offer %s because no launcher can use this offer" % offer.id.value)
+          # Mesos scheduler Python binding doesn't deal with filters='None' properly.
+          # See https://issues.apache.org/jira/browse/MESOS-2567.
+          filters = mesos_pb2.Filters()
         self._driver.declineOffer(offer.id, filters)
 
   @logged
