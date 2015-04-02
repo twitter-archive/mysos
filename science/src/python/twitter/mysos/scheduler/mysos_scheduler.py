@@ -117,6 +117,9 @@ app.add_option(
          'SHOULD BE VERY HIGH')
 
 
+# TODO(jyx): Flags like this are generally optional but specific executor implementations may
+# require them. Consider adding validators that can be plugged in so configuration errors can be
+# caught in the scheduler.
 app.add_option(
     '--installer_args',
     dest='installer_args',

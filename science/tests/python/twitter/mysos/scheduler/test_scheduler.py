@@ -77,8 +77,7 @@ class TestScheduler(unittest.TestCase):
         self._zk_client,
         self._zk_url,
         Amount(5, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml",
-        "hdfs://host/path")
+        "/etc/mysos/admin_keyfile.yml")
     scheduler1.registered(self._driver, self._framework_id, object())
     scheduler1.create_cluster("cluster1", "mysql_user", 3)
     scheduler1.resourceOffers(self._driver, [self._offer])
@@ -103,8 +102,7 @@ class TestScheduler(unittest.TestCase):
         self._zk_client,
         self._zk_url,
         Amount(5, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml",
-        "hdfs://host/path")
+        "/etc/mysos/admin_keyfile.yml")
 
     # Scheduler always receives registered() with the same FrameworkID after failover.
     scheduler2.registered(self._driver, self._framework_id, object())
@@ -126,8 +124,7 @@ class TestScheduler(unittest.TestCase):
         self._zk_client,
         self._zk_url,
         Amount(5, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml",
-        "hdfs://host/path")
+        "/etc/mysos/admin_keyfile.yml")
     scheduler1.registered(self._driver, self._framework_id, object())
     scheduler1.create_cluster("cluster1", "mysql_user", 3)
 
@@ -141,8 +138,7 @@ class TestScheduler(unittest.TestCase):
         self._zk_client,
         self._zk_url,
         Amount(5, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml",
-        "hdfs://host/path")
+        "/etc/mysos/admin_keyfile.yml")
 
     assert len(scheduler2._launchers) == 0  # No launchers are recovered.
 
@@ -173,7 +169,6 @@ class TestScheduler(unittest.TestCase):
         self._zk_url,
         Amount(5, Time.SECONDS),
         "/etc/mysos/admin_keyfile.yml",
-        "hdfs://host/path",
         framework_role='mysos')  # Require 'mysos' but the resources are in '*'.
     scheduler1.registered(self._driver, self._framework_id, object())
     scheduler1.create_cluster("cluster1", "mysql_user", 3)

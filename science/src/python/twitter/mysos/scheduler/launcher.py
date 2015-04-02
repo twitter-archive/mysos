@@ -45,7 +45,7 @@ class MySQLClusterLauncher(object):
       executor_cmd,
       election_timeout,
       admin_keypath,
-      installer_args,
+      installer_args=None,
       framework_role='*',
       query_interval=Amount(1, Time.SECONDS)):
     """

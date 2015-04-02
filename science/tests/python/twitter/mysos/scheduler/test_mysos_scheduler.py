@@ -33,9 +33,9 @@ def test_scheduler_runs():
     executors in separate processes but they are unit-tested separately.
   """
 
-  # Make sure testing_mysos_executor.pex is built and available to be fetched by Mesos slave.
-  assert subprocess.call(
-      ["./pants", "goal", "binary", "tests/python/twitter/mysos/executor:testing_mysos_executor"]) == 0
+  # Make sure fake_mysos_executor.pex is built and available to be fetched by Mesos slave.
+  assert subprocess.call([
+      "./pants", "binary", "src/python/twitter/mysos/executor/testing:fake_mysos_executor"]) == 0
 
   storage = FakeStorage(SequentialThreadingHandler())
   zk_client = FakeClient(storage=storage)
@@ -58,13 +58,12 @@ def test_scheduler_runs():
       state,
       state_provider,
       getpass.getuser(),
-      os.path.abspath("dist/testing_mysos_executor.pex"),
-      "./testing_mysos_executor.pex",
+      os.path.abspath("dist/fake_mysos_executor.pex"),
+      "./fake_mysos_executor.pex",
       zk_client,
       zk_url,
       Amount(40, Time.SECONDS),
-      "/fakepath",
-      "fake://address")
+      "/fakepath")
 
   scheduler_driver = mesos.native.MesosSchedulerDriver(
       scheduler,

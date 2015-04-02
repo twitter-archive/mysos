@@ -43,7 +43,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       zk_url,
       election_timeout,
       admin_keypath,
-      installer_args,
+      installer_args=None,
       framework_role='*'):
     """
       :param state: The Scheduler object.

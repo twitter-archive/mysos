@@ -74,7 +74,6 @@ class TestLauncher(object):
         "cmd.sh",
         Amount(5, Time.SECONDS),
         "/etc/mysos/admin_keyfile.yml",
-        "hdfs://host/path",
         query_interval=Amount(150, Time.MILLISECONDS))  # Short interval.
 
     self._elected = threading.Event()
@@ -175,8 +174,7 @@ class TestLauncher(object):
           "./executor.pex",
           "cmd.sh",
           Amount(5, Time.SECONDS),
-          "/etc/mysos/admin_keyfile.yml",
-          "hdfs://host/path"),
+          "/etc/mysos/admin_keyfile.yml"),
       MySQLClusterLauncher(
           self._driver,
           MySQLCluster("cluster1", "user1", "pass1", 2),
@@ -187,8 +185,7 @@ class TestLauncher(object):
           "./executor.pex",
           "cmd.sh",
           Amount(5, Time.SECONDS),
-          "/etc/mysos/admin_keyfile.yml",
-          "hdfs://host/path")]
+          "/etc/mysos/admin_keyfile.yml")]
     self._launchers.extend(launchers)
 
     resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000, 10001, 10002]))
@@ -221,8 +218,7 @@ class TestLauncher(object):
         "./executor.pex",
         "cmd.sh",
         Amount(5, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml",
-        "hdfs://host/path")
+        "/etc/mysos/admin_keyfile.yml")
     self._launchers.append(launcher)
 
     resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000]))
@@ -257,8 +253,7 @@ class TestLauncher(object):
         "./executor.pex",
         "cmd.sh",
         Amount(1, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml",
-        "hdfs://host/path")
+        "/etc/mysos/admin_keyfile.yml")
     self._launchers.append(launcher)
 
     resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000]))
@@ -410,7 +405,6 @@ class TestLauncher(object):
         "cmd.sh",
         Amount(5, Time.SECONDS),
         "/etc/mysos/admin_keyfile.yml",
-        "hdfs://host/path",
         query_interval=Amount(150, Time.MILLISECONDS))
 
     # Now fail the master task.
@@ -486,7 +480,6 @@ class TestLauncher(object):
         "cmd.sh",
         Amount(5, Time.SECONDS),
         "/etc/mysos/admin_keyfile.yml",
-        "hdfs://host/path",
         query_interval=Amount(150, Time.MILLISECONDS))
 
     for i in range(1, self._cluster.num_nodes):
