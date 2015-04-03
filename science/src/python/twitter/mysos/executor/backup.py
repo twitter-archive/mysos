@@ -21,13 +21,11 @@ class BackupStore(Interface):
   class BackupNotFoundError(Error): pass
 
   @abstractmethod
-  def restore(self, backup_id):
+  def restore(self):
     """
       Restore the backup.
 
-      :param backup_id: An identifier string for locating the backup. Its format is defined by the
-                        implementation.
-      :return: The BackupInfo object.
+      :return: The BackupInfo object. None if no state is restored.
     """
     pass
 

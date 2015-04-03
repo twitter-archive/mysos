@@ -17,8 +17,8 @@ app.add_option(
 
 
 app.add_option(
-    '--restore_backup_id',
-    dest='restore_backup_id',
+    '--backup_id',
+    dest='backup_id',
     default=None,
     help="The database backup to restore from. See TwitterBackupStore.restore.__doc__: %s" %
          TwitterBackupStore.restore.__doc__)
@@ -50,8 +50,8 @@ def main(args, options):
 
   try:
     backup_store = TwitterBackupStore(
-        Sandbox(sandbox_root), hadoop_conf_dir=options.hadoop_conf_dir)
-    info = backup_store.restore(options.restore_backup_id)
+        Sandbox(sandbox_root), options.backup_id, hadoop_conf_dir=options.hadoop_conf_dir)
+    info = backup_store.restore()
     log.info(
         "Finished restoring the backup. Backup info: %s" % json.dumps(info.__dict__))
   except (ValueError, TwitterBackupStore.Error) as e:

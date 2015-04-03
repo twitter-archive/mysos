@@ -26,12 +26,14 @@ class TwitterBackupStore(BackupStore):
   def __init__(
       self,
       sandbox,
+      backup_id,
       hadoop_conf_dir=HADOOP_CONF_DIR,
       backup_key=BACKUP_KEY,
       hdfs_backup_dir=HDFS_BACKUP_DIR,
       max_allowed_backup_age=MAX_ALLOWED_BACKUP_AGE):
     """
       :param sandbox: The Sandbox object.
+      :param backup_id: An identifier string for locating the backup.
       :param hadoop_conf_dir: The conf dir for "hadoop --config".
       :param backup_key: The key to decrypt the backup if it is encrypted.
       :param hdfs_backup_dir: The directory on HDFS where the backups are stored.
@@ -44,6 +46,8 @@ class TwitterBackupStore(BackupStore):
       raise TypeError("'sandbox' should be an instance of Sandbox")
     self._sandbox = sandbox
 
+    self._backup_id = backup_id
+
     self._hadoop_conf_dir = hadoop_conf_dir
     self._hdfs = HDFSHelper(self._hadoop_conf_dir)
     self._backup_key = backup_key
@@ -53,10 +57,8 @@ class TwitterBackupStore(BackupStore):
       raise TypeError("'max_allowed_backup_age' should be an instance of timedelta")
     self._max_allowed_backup_age = max_allowed_backup_age
 
-  def restore(self, backup_id):
+  def restore(self):
     """
-      :param backup_id: An identifier string for locating the backup.
-
       The 'backup_id' string can be either a file system path (an absolute path starting with a '/')
       to the backup file without the extensions on the HDFS (e.g. if the backup file is
       '/user/mysos/foo/201503102000.tar.gz.enc', the id is '/user/mysos/foo/201503102000'), or a
@@ -83,7 +85,7 @@ class TwitterBackupStore(BackupStore):
     cmd_pipeline = []  # We need to run a sequence of commands connected by pipes.
 
     # 1. Get the base path for the backup on HDFS.
-    hdfs_base_path = self._parse_backup_identifier(backup_id)
+    hdfs_base_path = self._parse_backup_identifier(self._backup_id)
 
     # 2. Fetch the log file.
     backup_file_log = hdfs_base_path + ".logfile"
