@@ -52,7 +52,9 @@ class MysosExecutor(Executor):
     # Create the runner here in the driver thread so subsequent task launches are rejected.
     try:
       self._runner = self._runner_provider.from_task(task, self._sandbox)
-    except TaskError as e:
+    except (TaskError, ValueError) as e:
+      # TODO(jyx): These should really all be 'ValueError's from all providers because they are
+      # simply factory methods.
       log.error("Failed to create TaskRunner: %s" % e.message)
       self._send_update(task.task_id.value, mesos_pb2.TASK_FAILED, e.message)
       self._kill()

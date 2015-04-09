@@ -14,6 +14,7 @@ from twitter.mysos.executor.executor import MysosExecutor
 from twitter.mysos.executor.mysos_task_runner import MysosTaskRunnerProvider
 from twitter.mysos.executor.noop_installer import NoopPackageInstallerProvider
 from twitter.mysos.executor.sandbox import Sandbox
+from twitter.mysos.executor.backup import NoopBackupStoreProvider
 
 import mesos.native
 
@@ -36,9 +37,14 @@ def main(args, options):
   unpack_assets(sandbox_root, MYSOS_MODULE, ASSET_RELPATH, execute=chmod_scripts)
 
   log.info("Starting Vagrant Mysos executor within sandbox %s" % sandbox_root)
+
+  sandbox = Sandbox(sandbox_root)
   executor = MysosExecutor(
-      MysosTaskRunnerProvider(MySQLTaskControlProvider(), NoopPackageInstallerProvider()),
-      sandbox=Sandbox(sandbox_root))
+      MysosTaskRunnerProvider(
+          MySQLTaskControlProvider(),
+          NoopPackageInstallerProvider(),  # Do not install any package.
+          NoopBackupStoreProvider()),  # Do not recover any state.
+      sandbox)
   driver = mesos.native.MesosExecutorDriver(executor)
   driver.run()
 

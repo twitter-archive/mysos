@@ -44,6 +44,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       election_timeout,
       admin_keypath,
       installer_args=None,
+      backup_store_args=None,
       framework_role='*'):
     """
       :param state: The Scheduler object.
@@ -56,6 +57,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       :param election_timeout: See flags.
       :param admin_keypath: See flags.
       :param installer_args: See flags.
+      :param backup_store_args: See flags.
       :param kazoo: The Kazoo client for communicating MySQL cluster information between the
                     scheduler and the executors.
       :param zk_url: ZooKeeper URL for used by the scheduler and the executors to access ZooKeeper.
@@ -77,6 +79,7 @@ class MysosScheduler(mesos.interface.Scheduler):
     self._election_timeout = election_timeout
     self._admin_keypath = admin_keypath
     self._installer_args = installer_args
+    self._backup_store_args = backup_store_args
 
     self._driver = None  # Will be set by registered().
 
@@ -94,11 +97,13 @@ class MysosScheduler(mesos.interface.Scheduler):
                                         # Mesos. The scheduler tolerates later disconnections.
 
   # --- Public interface. ---
-  def create_cluster(self, cluster_name, cluster_user, num_nodes):
+  def create_cluster(self, cluster_name, cluster_user, num_nodes, backup_id=None):
     """
       :param cluster_name: Name of the cluster.
       :param cluster_user: The user account on MySQL server.
       :param num_nodes: Number of nodes in the cluster.
+      :param backup_id: The 'backup_id' of the backup to restore from. If None then Mysos starts an
+                        empty instance.
 
       :return: a tuple of the following:
         - ZooKeeper URL for this Mysos cluster that can be used to resolve MySQL cluster info.
@@ -128,7 +133,12 @@ class MysosScheduler(mesos.interface.Scheduler):
       self._state.clusters.add(cluster_name)
       self._state_provider.dump_scheduler_state(self._state)
 
-      cluster = MySQLCluster(cluster_name, cluster_user, gen_password(), int(num_nodes))
+      cluster = MySQLCluster(
+          cluster_name,
+          cluster_user,
+          gen_password(),
+          int(num_nodes),
+          backup_id=backup_id)
       self._state_provider.dump_cluster_state(cluster)
 
       log.info("Creating launcher for cluster %s" % cluster_name)
@@ -144,6 +154,7 @@ class MysosScheduler(mesos.interface.Scheduler):
           self._election_timeout,
           self._admin_keypath,
           self._installer_args,
+          self._backup_store_args,
           framework_role=self._framework_role)
 
       return get_cluster_path(self._discover_zk_url, cluster_name), cluster.password
@@ -220,6 +231,7 @@ class MysosScheduler(mesos.interface.Scheduler):
             self._election_timeout,
             self._admin_keypath,
             self._installer_args,
+            self._backup_store_args,
             self._framework_role)  # For recovered launchers we use the currently specified
                                    # --framework_role and --use_dedicated_resources_only so that the
                                    # change in flags can be picked up by existing clusters.

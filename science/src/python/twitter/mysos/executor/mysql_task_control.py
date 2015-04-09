@@ -84,18 +84,19 @@ class MySQLTaskControl(TaskControl):
       raise TaskControl.Error("Scripts directory %s does not exist" % self._scripts_dir)
 
   @synchronized
-  def start(self, env=None):
-    if self._process:
-      return
-
-    # TODO(jyx): This is applicable only when we create a new DB instance. Move this into a state
-    # recovery abstraction.
+  def initialize(self, env):
     command = "%(cmd)s %(framework_user)s %(data_dir)s" % dict(
         cmd=os.path.join(self._scripts_dir, "mysos_install_db.sh"),
         framework_user=self._framework_user,
         data_dir=self._sandbox.mysql_data_dir)
     log.info("Executing command: %s" % command)
     subprocess.check_call(command, shell=True, env=env)
+
+  @synchronized
+  def start(self, env=None):
+    if self._process:
+      log.warn("start() called when a running task subprocess already exists")
+      return
 
     command = (
         "%(cmd)s %(framework_user)s %(host)s %(port)s %(server_id)s %(data_dir)s %(log_dir)s "

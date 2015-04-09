@@ -9,6 +9,7 @@ from .executor import MysosExecutor
 from .mysql_task_control import MySQLTaskControlProvider
 from .mysos_task_runner import MysosTaskRunnerProvider
 from .sandbox import Sandbox
+from .twitter_backup import TwitterBackupStoreProvider
 from .twitter_installer import TwitterPackageInstallerProvider
 
 import mesos.native
@@ -33,7 +34,10 @@ def main(args, options):
 
   log.info("Starting Mysos executor within sandbox %s" % sandbox_root)
   executor = MysosExecutor(
-      MysosTaskRunnerProvider(MySQLTaskControlProvider(), TwitterPackageInstallerProvider()),
+      MysosTaskRunnerProvider(
+          MySQLTaskControlProvider(),
+          TwitterPackageInstallerProvider(),
+          TwitterBackupStoreProvider()),
       sandbox=Sandbox(sandbox_root))
   driver = mesos.native.MesosExecutorDriver(executor)
   driver.run()

@@ -13,7 +13,8 @@ run = Process(
     '--framework_failover_timeout=1m',
     '--admin_keypath=/etc/twkeys/mysos/mysos/admin.yml',
     '--work_dir=./mysos',
-    '--installer_args=\'{"mysql_pkg_uri": "hdfs://hadoop-rt-nn.smf1.twitter.com:8020/mesos/mysos/smf1-dev2/mysos_mysql.tar.gz"}\''])
+    '--installer_args=\'{"mysql_pkg_uri": "hdfs://hadoop-rt-nn.smf1.twitter.com:8020/mesos/mysos/smf1-dev2/mysos_mysql.tar.gz"}\'',
+    '--backup_store_args=\'{"hadoop_conf_dir": "/etc/hadoop/hadoop-conf-backups-smf1"}\''])
 )
 
 resources = Resources(cpu=1, ram=(512*MB), disk=(512*MB))

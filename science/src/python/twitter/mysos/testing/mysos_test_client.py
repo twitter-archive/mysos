@@ -46,11 +46,21 @@ app.add_option(
     help='Number of nodes this cluster should have')
 
 
+app.add_option(
+    '--backup_id',
+    dest='backup_id',
+    default=None,
+    help="The 'backup_id' to restore from")
+
+
 def main(args, options):
   # This test requires the VM to be properly set up. (e.g. vagrant init ; vagrant up)
   # The logs for mysos and other dependent components are under /var/log/upstart/ in the VM.
   url = 'http://%s:%s/create/%s' % (options.api_host, options.api_port, options.cluster_name)
-  values = {'num_nodes': options.num_nodes, 'cluster_user': options.cluster_user}
+  values = dict(
+      num_nodes=options.num_nodes,
+      cluster_user=options.cluster_user,
+      backup_id=options.backup_id if options.backup_id else '')
 
   req = urllib2.Request(url, urllib.urlencode(values))
   try:

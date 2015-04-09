@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta
+import json
 import logging
 import posixpath
 import subprocess
@@ -9,7 +10,7 @@ from twitter.common.fs.hdfs import HDFSHelper
 from twitter.common.log.options import LogOptions
 from twitter.common.string import ScanfParser
 
-from .backup import BackupInfo, BackupStore
+from .backup import BackupInfo, BackupStore, BackupStoreProvider, NoopBackupStore
 from .sandbox import Sandbox
 from .shell_utils import decompress, decrypt, hdfs_cat, pv, untar
 
@@ -20,6 +21,39 @@ HADOOP_CONF_DIR = '/etc/hadoop/conf'
 BACKUP_KEY = "/etc/twkeys/mysos/dba_backup/dba-backup.key"
 HDFS_BACKUP_DIR = "/user"
 MAX_ALLOWED_BACKUP_AGE = timedelta(days=3)
+
+
+class TwitterBackupStoreProvider(BackupStoreProvider):
+  def from_task(self, task, sandbox):
+    data = json.loads(task.data)
+
+    if 'backup_id' not in data or not data['backup_id']:
+      # 'backup_id' is a user-supplied argument so we simply do nothing if it's empty.
+      log.info("Returning a noop backup store because 'backup_id' is not specified")
+      return NoopBackupStore()
+
+    if 'backup_store_args' not in data or not data['backup_store_args']:
+      raise ValueError(
+          "Cannot create BackupStore because 'backup_store_args' is not provided in task data")
+
+    backup_store_args = json.loads(data['backup_store_args'])
+
+    if not backup_store_args or 'hadoop_conf_dir' not in backup_store_args:
+      # Here we are assuming that in a Twitter setup there should always be a backup store
+      # configured, therefore we throw an error when arguments are missing.
+      raise ValueError(
+          "Cannot create BackupStore because 'hadoop_conf_dir' is not provided in "
+          "'backup_store_args'")
+
+    if 'backup_id' not in data or not data['backup_id']:
+      # 'backup_id' is a user-supplied argument so we simply do nothing if it's empty.
+      log.info("Returning a noop backup store because 'backup_id' is not specified")
+      return NoopBackupStore()
+
+    return TwitterBackupStore(
+        sandbox,
+        str(data['backup_id']),
+        hadoop_conf_dir=backup_store_args['hadoop_conf_dir'])
 
 
 class TwitterBackupStore(BackupStore):
@@ -172,9 +206,6 @@ class TwitterBackupStore(BackupStore):
     """
       :return: The backup's HDFS base path (without any extension).
     """
-    if not isinstance(backup_identifier, str):
-      raise TypeError("'backup_identifier' should be an instance of str")
-
     if backup_identifier.startswith('/'):
       if posixpath.splitext(backup_identifier)[1]:
         raise ValueError(

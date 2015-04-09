@@ -6,6 +6,7 @@ from twitter.common.concurrent import deadline
 from twitter.common.quantity import Amount, Time
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
 from twitter.mysos.common.cluster import ClusterManager
+from twitter.mysos.common.testing import Fake
 from twitter.mysos.executor.noop_installer import NoopPackageInstaller
 from twitter.mysos.executor.mysos_task_runner import MysosTaskRunner
 from twitter.mysos.executor.task_runner import TaskError
@@ -25,12 +26,16 @@ if 'MYSOS_DEBUG' in os.environ:
   log.init('mysos_tests')
 
 
+class FakeStateManager(Fake): pass
+
+
 class TestTaskRunner(unittest.TestCase):
   def setUp(self):
     self._storage = FakeStorage(SequentialThreadingHandler())
     self._client = FakeClient(storage=self._storage)
     self._client.start()
     self._self_instance = ServiceInstance(Endpoint("host", 10000))
+    self._state_manager = FakeStateManager()
 
   def tearDown(self):
     self._client.stop()
@@ -42,7 +47,8 @@ class TestTaskRunner(unittest.TestCase):
         self._client,
         "/home/test/my_cluster",
         NoopPackageInstaller(),
-        task_control)
+        task_control,
+        self._state_manager)
     runner.start()
     assert runner.stop()
 
@@ -56,7 +62,8 @@ class TestTaskRunner(unittest.TestCase):
         self._client,
         "/home/test/my_cluster",
         NoopPackageInstaller(),
-        task_control)
+        task_control,
+        self._state_manager)
 
     manager = ClusterManager(self._client, "/home/test/my_cluster")
     runner.start()
@@ -82,7 +89,8 @@ class TestTaskRunner(unittest.TestCase):
         self._client,
         "/home/test/my_cluster",
         NoopPackageInstaller(),
-        task_control)
+        task_control,
+        self._state_manager)
 
     manager = ClusterManager(self._client, "/home/test/my_cluster")
     runner.start()
@@ -104,7 +112,8 @@ class TestTaskRunner(unittest.TestCase):
         self._client,
         "/home/test/my_cluster",
         NoopPackageInstaller(),
-        task_control)
+        task_control,
+        self._state_manager)
 
     runner.start()
     assert deadline(runner.join, Amount(1, Time.SECONDS)) == 123
@@ -116,7 +125,8 @@ class TestTaskRunner(unittest.TestCase):
         self._client,
         "/home/test/my_cluster",
         NoopPackageInstaller(),
-        task_control)
+        task_control,
+        self._state_manager)
 
     with pytest.raises(TaskError) as e:
       runner.start()
@@ -129,7 +139,8 @@ class TestTaskRunner(unittest.TestCase):
         self._client,
         "/home/test/my_cluster",
         NoopPackageInstaller(),
-        task_control)
+        task_control,
+        self._state_manager)
 
     manager = ClusterManager(self._client, "/home/test/my_cluster")
     runner.start()
@@ -152,7 +163,8 @@ class TestTaskRunner(unittest.TestCase):
         self._client,
         "/home/test/my_cluster",
         NoopPackageInstaller(),
-        task_control)
+        task_control,
+        self._state_manager)
 
     runner.start()
     assert runner.get_log_position() == 1
@@ -164,7 +176,8 @@ class TestTaskRunner(unittest.TestCase):
         self._client,
         "/home/test/my_cluster",
         NoopPackageInstaller(),
-        task_control)
+        task_control,
+        self._state_manager)
 
     with pytest.raises(TaskError) as e:
       runner.get_log_position()
@@ -185,7 +198,8 @@ done
       self._client,
       "/home/test/my_cluster",
       NoopPackageInstaller(),
-      task_control)
+      task_control,
+      self._state_manager)
 
     task_control._mysqld = cmd
     runner.start()

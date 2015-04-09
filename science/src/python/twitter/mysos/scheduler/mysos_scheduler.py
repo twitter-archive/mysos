@@ -129,6 +129,15 @@ app.add_option(
 )
 
 
+app.add_option(
+    '--backup_store_args',
+    dest='backup_store_args',
+    default=None,
+    help="Arguments for the store for MySQL backups. Its use and format are defined by the backup "
+         "store implementation. e.g., It can be a serialized JSON string"
+)
+
+
 FRAMEWORK_NAME = 'mysos'
 MYSOS_MODULE = 'twitter.mysos.scheduler'
 ASSET_RELPATH = 'assets'
@@ -215,6 +224,7 @@ def main(args, options):
       election_timeout,
       options.admin_keypath,
       options.installer_args,
+      options.backup_store_args,
       framework_role=options.framework_role)
 
   scheduler_driver = mesos.native.MesosSchedulerDriver(

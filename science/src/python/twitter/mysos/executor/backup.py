@@ -39,3 +39,17 @@ class BackupStoreProvider(Interface):
       :return: The BackupStore instance.
     """
     pass
+
+
+class NoopBackupStore(BackupStore):
+  """Used when no restore is requested."""
+
+  def restore(self):
+    return None  # Returning 'None' because no state is restored.
+
+
+class NoopBackupStoreProvider(BackupStoreProvider):
+  """Used when no restore is requested."""
+
+  def from_task(self, task, sandbox):
+    return NoopBackupStore()

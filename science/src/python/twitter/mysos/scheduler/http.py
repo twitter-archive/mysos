@@ -26,12 +26,14 @@ class MysosServer(HttpServer):
     cluster_name = clustername  # For naming consistency.
     num_nodes = bottle.request.forms.get('num_nodes', default=3)
     cluster_user = bottle.request.forms.get('cluster_user', default=None)
+    backup_id = bottle.request.forms.get('backup_id', default=None)
 
     try:
       cluster_zk_url, cluster_password = self._scheduler.create_cluster(
           cluster_name,
           cluster_user,
-          num_nodes)
+          num_nodes,
+          backup_id=backup_id)
       return json.dumps(dict(cluster_url=cluster_zk_url, cluster_password=cluster_password))
     except MysosScheduler.ClusterExists as e:
       raise bottle.HTTPResponse(e.message, status=409)

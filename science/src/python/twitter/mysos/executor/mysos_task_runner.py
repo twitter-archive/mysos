@@ -12,6 +12,7 @@ from twitter.mysos.common.cluster import ClusterListener, get_cluster_path
 from twitter.mysos.common.zookeeper import parse
 
 from .installer import PackageInstaller
+from .state import StateManager
 from .task_runner import TaskError, TaskRunner, TaskRunnerProvider
 from .task_control import TaskControl
 
@@ -19,9 +20,10 @@ from kazoo.client import KazooClient
 
 
 class MysosTaskRunnerProvider(TaskRunnerProvider):
-  def __init__(self, task_control_provider, installer_provider):
+  def __init__(self, task_control_provider, installer_provider, backup_store_provider):
     self._task_control_provider = task_control_provider
     self._installer_provider = installer_provider
+    self._backup_store_provider = backup_store_provider
 
   def from_task(self, task, sandbox):
     data = json.loads(task.data)
@@ -34,15 +36,19 @@ class MysosTaskRunnerProvider(TaskRunnerProvider):
     try:
       task_control = self._task_control_provider.from_task(task, sandbox)
       installer = self._installer_provider.from_task(task, sandbox)
+      backup_store = self._backup_store_provider.from_task(task, sandbox)
     except (TaskControl.Error, PackageInstaller.Error) as e:
       raise TaskError(e.message)
+
+    state_manager = StateManager(sandbox, backup_store)
 
     return MysosTaskRunner(
         self_instance,
         kazoo,
         get_cluster_path(path, cluster_name),
         installer,
-        task_control)
+        task_control,
+        state_manager)
 
 
 class MysosTaskRunner(TaskRunner):
@@ -60,19 +66,21 @@ class MysosTaskRunner(TaskRunner):
                the subprocess using the task control.
   """
 
-  def __init__(self, self_instance, kazoo, cluster_root, installer, task_control):
+  def __init__(self, self_instance, kazoo, cluster_root, installer, task_control, state_manager):
     """
       :param self_instance: The local ServiceInstance associated with this task runner.
       :param kazoo: Kazoo client, it should be started before being passed in.
       :param cluster_root: The ZooKeeper root path for *this cluster*.
       :param installer: The PackageInstaller for MySQL.
       :param task_control: The TaskControl that interacts with the task process.
+      :param state_manager: The StateManager for managing the executor state.
     """
     self._installer = installer
     self._env = None  # The environment variables for the 'task_control' commands. Set by the
                       # installer.
 
     self._task_control = task_control
+    self._state_manager = state_manager
 
     self._lock = threading.Lock()
     self._popen = None  # The singleton task process started by '_task_control'.
@@ -109,17 +117,24 @@ class MysosTaskRunner(TaskRunner):
       # by multiple threads until after it's started; can be a noop as well, depending on the
       # installer implementation.
       try:
+        # 1. Install the application.
         self._env = self._installer.install()
         log.info("Package installation completed. Resulting environment variables: %s" % self._env)
 
+        # 2. Restore/initialize the application state.
+        self._state_manager.bootstrap(self._task_control, self._env)
+        log.info("Executor state fully bootstrapped")
+
+        # 3. Start the task subprocess.
         # Store the process so we can kill it if necessary.
         self._popen = self._task_control.start(env=self._env)
         log.info("Task started in subprocess %s" % self._popen.pid)
         defer(self._wait)
 
+        # 4. Start monitoring.
         # Only start listening to ZK events after the task subprocess has been successfully started.
         self._listener.start()
-      except (PackageInstaller.Error, CalledProcessError) as e:
+      except (PackageInstaller.Error, StateManager.Error, CalledProcessError) as e:
         raise TaskError("Failed to start MySQL task: %s" % e)
 
   def _wait(self):

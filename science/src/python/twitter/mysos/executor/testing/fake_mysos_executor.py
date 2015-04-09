@@ -7,6 +7,7 @@ from twitter.common import app, log
 from twitter.common.log.options import LogOptions
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
 from twitter.mysos.common import zookeeper
+from twitter.mysos.common.testing import Fake
 from twitter.mysos.executor.executor import MysosExecutor
 from twitter.mysos.executor.mysos_task_runner import MysosTaskRunner, TaskRunnerProvider
 from twitter.mysos.executor.noop_installer import NoopPackageInstaller
@@ -46,7 +47,8 @@ class FakeTaskRunnerProvider(TaskRunnerProvider):
         zk_client,
         posixpath.join(path, cluster_name),
         NoopPackageInstaller(),
-        task_control)
+        task_control,
+        Fake())
 
 
 def main(args, options):

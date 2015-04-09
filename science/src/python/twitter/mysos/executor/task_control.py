@@ -24,6 +24,15 @@ class TaskControl(Interface):
     pass
 
   @abstractmethod
+  def initialize(self, env):
+    """
+      Initialize a new DB instance.
+
+      :param env: The 'env' necessary for 'subprocess' to run the command.
+    """
+    pass
+
+  @abstractmethod
   def start(self, env=None):
     """
     Start the task in a subprocess.

@@ -22,6 +22,7 @@ class FakeTaskControl(TaskControl):
   def __init__(
       self,
       mysqld="tail -f /dev/null",
+      initialize_cmd=":",
       start_cmd=":",
       reparent_cmd=":",
       promote_cmd=":",
@@ -34,12 +35,17 @@ class FakeTaskControl(TaskControl):
     """
     self._lock = threading.Lock()
     self._mysqld = mysqld
+    self._initialize_cmd = initialize_cmd
     self._start_cmd = start_cmd,
     self._reparent_cmd = reparent_cmd,
     self._promote_cmd = promote_cmd,
     self._get_log_position_cmd = get_log_position_cmd
     self._position = position
     self._process = None
+
+  @synchronized
+  def initialize(self, env):
+    subprocess.check_call(self._initialize_cmd, shell=True)
 
   @synchronized
   def start(self, env=None):
