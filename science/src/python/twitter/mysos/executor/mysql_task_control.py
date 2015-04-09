@@ -83,12 +83,17 @@ class MySQLTaskControl(TaskControl):
     if not os.path.isdir(self._scripts_dir):
       raise TaskControl.Error("Scripts directory %s does not exist" % self._scripts_dir)
 
+    self._conf_file = os.path.join(self._sandbox.bin, "mysql", "conf", "my.cnf")
+    if not os.path.isfile(self._conf_file):
+      raise TaskControl.Error("Option file %s does not exist" % self._scripts_dir)
+
   @synchronized
   def initialize(self, env):
-    command = "%(cmd)s %(framework_user)s %(data_dir)s" % dict(
+    command = "%(cmd)s %(framework_user)s %(data_dir)s %(conf_file)s" % dict(
         cmd=os.path.join(self._scripts_dir, "mysos_install_db.sh"),
         framework_user=self._framework_user,
-        data_dir=self._sandbox.mysql_data_dir)
+        data_dir=self._sandbox.mysql_data_dir,
+        conf_file=self._conf_file)
     log.info("Executing command: %s" % command)
     subprocess.check_call(command, shell=True, env=env)
 
@@ -100,7 +105,7 @@ class MySQLTaskControl(TaskControl):
 
     command = (
         "%(cmd)s %(framework_user)s %(host)s %(port)s %(server_id)s %(data_dir)s %(log_dir)s "
-        "%(tmp_dir)s" % dict(
+        "%(tmp_dir)s %(conf_file)s %(buffer_pool_size)s" % dict(
             cmd=os.path.join(self._scripts_dir, "mysos_launch_mysqld.sh"),
             framework_user=self._framework_user,
             host=self._host,
@@ -108,7 +113,9 @@ class MySQLTaskControl(TaskControl):
             server_id=self._server_id,
             data_dir=self._sandbox.mysql_data_dir,
             log_dir=self._sandbox.mysql_log_dir,
-            tmp_dir=self._sandbox.mysql_tmp_dir))
+            tmp_dir=self._sandbox.mysql_tmp_dir,
+            conf_file=self._conf_file,
+            buffer_pool_size=512 * 1024 * 1024))  # TODO(jyx): Get it from task resources.
     log.info("Executing command: %s" % command)
     self._process = subprocess.Popen(command, shell=True, env=env)
 
@@ -117,7 +124,7 @@ class MySQLTaskControl(TaskControl):
         cmd=os.path.join(self._scripts_dir, "mysos_wait_for_mysqld.sh"),
         pid_file=os.path.join(self._sandbox.mysql_log_dir, "mysqld.pid"),
         port=self._port,
-        timeout=10)
+        timeout=60)
     log.info("Executing command: %s" % command)
     subprocess.check_call(command, shell=True, env=env)
 

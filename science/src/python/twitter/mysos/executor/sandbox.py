@@ -1,4 +1,4 @@
-from os.path import join
+from os.path import isabs, join
 
 from twitter.common.dirutil import safe_mkdir
 
@@ -28,6 +28,9 @@ class Sandbox(object):
 
       The sandbox makes sure that the folder paths it exposes as properties are created.
     """
+    if not isabs(root):
+      raise ValueError("Only an absolute path is allowed for 'root")
+
     self._root = root
 
     safe_mkdir(self.bin)

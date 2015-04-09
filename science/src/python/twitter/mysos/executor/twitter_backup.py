@@ -198,6 +198,16 @@ class TwitterBackupStore(BackupStore):
     subprocess.check_call(
         "rm -rfv %s" % os.path.join(self._sandbox.mysql_data_dir, "relay-log.info"), shell=True)
 
+    # Fix mysql-bin.index to point to the local sandbox.
+    bin_log_index_file = os.path.join(self._sandbox.mysql_log_dir, 'mysql-bin.index')
+    output = []
+    with open(bin_log_index_file, 'rb') as f:
+      for line in f:
+        bin_filename = os.path.basename(line)
+        output.append(os.path.join(self._sandbox.mysql_log_dir, bin_filename) + '\n')
+    with open(bin_log_index_file, 'wb') as f:
+      f.writelines(output)
+
     log.info("Restored backup is now clean")
 
     return BackupInfo(backup_file, cold_backup)

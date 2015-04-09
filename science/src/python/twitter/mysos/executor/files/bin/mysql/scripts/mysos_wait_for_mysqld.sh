@@ -3,6 +3,8 @@
 # Wait for the mysqld instance to start up and be ready for traffic.
 #
 
+set -ue
+
 path=$1
 port=$2
 timeout=$3

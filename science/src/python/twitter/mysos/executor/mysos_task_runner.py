@@ -3,6 +3,7 @@ import json
 import os
 import signal
 from subprocess import CalledProcessError
+import sys
 import threading
 
 from twitter.common import log
@@ -214,7 +215,8 @@ class MysosTaskRunner(TaskRunner):
 
       :exception: The TaskError exception due to an error in task control operations.
     """
-    result = self._result.get(True)
+    # Using 'sys.maxint' makes this forever wait interruptible.
+    result = self._result.get(True, sys.maxint)
     if isinstance(result, Exception):
       raise result
     else:

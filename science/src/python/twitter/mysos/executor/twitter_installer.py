@@ -28,6 +28,12 @@ class TwitterPackageInstallerProvider(PackageInstallerProvider):
 
   def from_task(self, task, sandbox):
     data = json.loads(task.data)
+
+    if 'installer_args' not in data or not data['installer_args']:
+      raise ValueError(
+        "Cannot create TwitterPackageInstaller because 'installer_args' is not provided in task "
+        "data")
+
     installer_args = json.loads(data['installer_args'])
 
     if not installer_args or 'mysql_pkg_uri' not in installer_args:

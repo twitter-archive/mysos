@@ -9,3 +9,8 @@ def test_testing_client_build():
 def test_twitter_restore_hdfs_build():
   build_and_execute_pex_target('src/python/twitter/mysos/executor/testing:twitter_restore_hdfs',
                                'dist/twitter_restore_hdfs.pex')
+
+
+def test_mysos_runner_build():
+  build_and_execute_pex_target('src/python/twitter/mysos/executor/testing:mysos_runner',
+                               'dist/mysos_runner.pex')
