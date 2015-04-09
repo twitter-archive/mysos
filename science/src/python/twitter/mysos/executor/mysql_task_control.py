@@ -4,11 +4,15 @@ import subprocess
 import threading
 
 from twitter.common import log
+from twitter.common.quantity import Amount, Data
 from twitter.common_internal.keybird.keybird import KeyBird
 from twitter.mysos.common.decorators import synchronized
 
 from .sandbox import Sandbox
 from .task_control import TaskControl, TaskControlProvider
+
+
+MEM_FRACTION_FOR_BUFFER_POOL = 0.75
 
 
 class MySQLTaskControlProvider(TaskControlProvider):
@@ -19,6 +23,17 @@ class MySQLTaskControlProvider(TaskControlProvider):
 
   def from_task(self, task, sandbox):
     data = json.loads(task.data)
+    task_mem = None
+    for resource in task.resources:
+      if resource.name == 'mem':
+        task_mem = resource.scalar.value
+        break
+
+    assert task_mem, "Task resources should always include 'mem'"
+
+    buffer_pool_size = int(
+        Amount(int(task_mem), Data.MB).as_(Data.BYTES) * MEM_FRACTION_FOR_BUFFER_POOL)
+    log.info("Allocating %s bytes of memory to MySQL buffer pool" % buffer_pool_size)
 
     # TODO(jyx): Use an ephemeral sandbox for now. Will change when Mesos adds persistent resources
     # support: MESOS-1554.
@@ -31,7 +46,8 @@ class MySQLTaskControlProvider(TaskControlProvider):
         data['cluster_user'],
         data['cluster_password'],
         data['server_id'],
-        data['admin_keypath'])
+        data['admin_keypath'],
+        buffer_pool_size)
 
 
 class MySQLTaskControl(TaskControl):
@@ -45,7 +61,8 @@ class MySQLTaskControl(TaskControl):
       cluster_user,
       password,
       server_id,
-      admin_keypath):
+      admin_keypath,
+      buffer_pool_size):
     """
       :param sandbox: The sandbox where all files of this Mysos executor instance reside.
       :param framework_user: The Unix user this framework runs as.
@@ -55,6 +72,7 @@ class MySQLTaskControl(TaskControl):
       :param cluster_user: The Unix account that mysqld will run as and also the MySQL username.
       :param password: The MySQL password associated with 'cluster_user' in MySQL.
       :param server_id: The ID that identifies the MySQL instance.
+      :param buffer_pool_size: For the 'innodb_buffer_pool_size' variable in MySQL options.
     """
     if not isinstance(sandbox, Sandbox):
       raise TypeError("'sandbox' should be an instance of Sandbox")
@@ -67,6 +85,11 @@ class MySQLTaskControl(TaskControl):
     self._cluster_user = cluster_user
     self._password = password
     self._server_id = server_id
+
+    if not isinstance(buffer_pool_size, int):
+      raise ValueError("'buffer_pool_size' should be an instance of int")
+
+    self._buffer_pool_size = buffer_pool_size
 
     try:
       keybird = KeyBird(admin_keypath)
@@ -115,7 +138,7 @@ class MySQLTaskControl(TaskControl):
             log_dir=self._sandbox.mysql_log_dir,
             tmp_dir=self._sandbox.mysql_tmp_dir,
             conf_file=self._conf_file,
-            buffer_pool_size=512 * 1024 * 1024))  # TODO(jyx): Get it from task resources.
+            buffer_pool_size=self._buffer_pool_size))
     log.info("Executing command: %s" % command)
     self._process = subprocess.Popen(command, shell=True, env=env)
 

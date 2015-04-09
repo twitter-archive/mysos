@@ -1,6 +1,5 @@
 """A testing Mysos runner binary to run MySQL tasks locally."""
 
-from collections import namedtuple
 import getpass
 import json
 import os
@@ -19,6 +18,8 @@ from twitter.mysos.executor.noop_installer import NoopPackageInstallerProvider
 from twitter.mysos.executor.sandbox import Sandbox
 from twitter.mysos.executor.twitter_backup import TwitterBackupStoreProvider
 from twitter.mysos.executor.twitter_installer import TwitterPackageInstallerProvider
+
+import mesos.interface.mesos_pb2 as mesos_pb2
 
 
 MYSOS_MODULE = 'twitter.mysos.executor'
@@ -114,6 +115,14 @@ app.add_option(
     help="Path to the sandbox. If not specified, a temp directory is created for it")
 
 
+app.add_option(
+    '--task_mem',
+    dest='task_mem',
+    type=int,
+    default=512 * 1024 * 1024,
+    help="Size of the memory that the task should use")
+
+
 def chmod_scripts(path):
   """Make scripts executable."""
   if path.endswith('.sh'):
@@ -121,12 +130,40 @@ def chmod_scripts(path):
     os.chmod(path, st.st_mode | stat.S_IEXEC)
 
 
+# TODO(jyx): The following two methods are stolen from scheduler/launcher.py. Consider extracting
+# them out into common/.
 def gen_password():
   """Return a randomly-generated password of 21 characters."""
   return ''.join(random.choice(
       string.ascii_uppercase +
       string.ascii_lowercase +
       string.digits) for _ in range(21))
+
+
+def create_resources(cpus, mem, ports, role='*'):
+  """Return a list of 'Resource' protobuf for the provided resources."""
+  cpus_resources = mesos_pb2.Resource()
+  cpus_resources.name = 'cpus'
+  cpus_resources.type = mesos_pb2.Value.SCALAR
+  cpus_resources.role = role
+  cpus_resources.scalar.value = cpus
+
+  mem_resources = mesos_pb2.Resource()
+  mem_resources.name = 'mem'
+  mem_resources.type = mesos_pb2.Value.SCALAR
+  mem_resources.role = role
+  mem_resources.scalar.value = mem
+
+  ports_resources = mesos_pb2.Resource()
+  ports_resources.name = 'ports'
+  ports_resources.type = mesos_pb2.Value.RANGES
+  ports_resources.role = role
+  for port in ports:
+    port_range = ports_resources.ranges.range.add()
+    port_range.begin = port
+    port_range.end = port
+
+  return [cpus_resources, mem_resources, ports_resources]
 
 
 def main(args, options):
@@ -166,8 +203,11 @@ def main(args, options):
 
   log.info("Starting Mysos runner within sandbox %s" % sandbox_root)
 
-  TaskInfo = namedtuple('TaskInfo', ['data'])
-  task = TaskInfo(data=json.dumps(dict(
+  task = mesos_pb2.TaskInfo()
+
+  # Values other than the 'mem' are unused.
+  task.resources.extend(create_resources(1, options.task_mem, [options.port]))
+  task.data = json.dumps(dict(
       framework_user=options.framework_user,
       host=socket.gethostname(),
       port=options.port,
@@ -179,7 +219,7 @@ def main(args, options):
       admin_keypath=options.admin_keypath,
       installer_args=options.installer_args,
       backup_store_args=options.backup_store_args,
-      restore_backup_id=options.restore_backup_id)))
+      restore_backup_id=options.restore_backup_id))
 
   runner = MysosTaskRunnerProvider(
       MySQLTaskControlProvider(),
