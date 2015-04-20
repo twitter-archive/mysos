@@ -1,22 +1,31 @@
-#TODO(jyx): Merge all aurora job files.
+# TODO(jyx): Merge all aurora job files.
+# NOTE: In atla-test we use the latest mysos_executor.
+
+import textwrap
 
 install = Packer.install(name='mysos_scheduler', version='latest')
 
 run = Process(
   name='mysos_scheduler',
-  cmdline=' '.join([
-    'chmod +x ./mysos_scheduler.pex && ./mysos_scheduler.pex',
-    '--port {{thermos.ports[http]}}',
-    '--framework_user=mysos',
-    '--mesos_master=zk://mesos:mesos@zookeeperdev.atla.twitter.com:2181/home/mesos/test/master',
-    '--executor_uri=hftp://hadoop-rt-nn.atla.twitter.com:50070/mesos/mysos/atla-test/mysos_executor.pex',
-    '--executor_cmd=./mysos_executor.pex',
-    '--zk_url=zk://mysos:mysos@zookeeperdev.atla.twitter.com:2181/mysos/test/clusters',
-    '--admin_keypath=/etc/twkeys/mysos/mysos/admin.yml',
-    '--work_dir=./mysos',
-    '--installer_args=\'{"mysql_pkg_uri": "hftp://hadoop-rt-nn.atla.twitter.com:50070/mesos/mysos/atla-test/mysos_mysql.tar.gz"}\'',
-    '--framework_role=mysos',
-    '--backup_store_args=\'{"hadoop_conf_dir": "/etc/hadoop/hadoop-conf-backups-atla"}\''])
+  cmdline=textwrap.dedent('''
+    md5=$(echo '{{packer[mysos][mysos_executor][latest].package_uri}}' | awk -F'/' '{print $NF}')
+    executor_cmd="mv $md5 mysos_executor.pex && chmod +x mysos_executor.pex && ./mysos_executor.pex"
+    mysos_args=(
+      --port {{thermos.ports[http]}}
+      --framework_user=mysos
+      --mesos_master=zk://mesos:mesos@zookeeperdev.atla.twitter.com:2181/home/mesos/test/master
+      --executor_uri={{packer[mysos][mysos_executor][latest].package_uri}}
+      --executor_cmd="$executor_cmd"
+      --zk_url=zk://mysos:mysos@zookeeperdev.atla.twitter.com:2181/mysos/test
+      --framework_failover_timeout=1h
+      --admin_keypath=/etc/twkeys/mysos/mysos/admin.yml
+      --work_dir=./mysos
+      --installer_args='{"mysql_pkg_uri": "hftp://hadoop-rt-nn.atla.twitter.com:50070/mesos/mysos/atla-test/mysos_mysql.tar.gz"}'
+      --framework_role=mysos
+      --backup_store_args='{"hadoop_conf_dir": "/etc/hadoop/hadoop-conf-backups-atla"}'
+    )
+    chmod +x ./mysos_scheduler.pex && ./mysos_scheduler.pex "${mysos_args[@]}"'''
+  )
 )
 
 resources = Resources(cpu=1, ram=(512*MB), disk=(512*MB))

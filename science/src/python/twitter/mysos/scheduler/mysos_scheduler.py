@@ -144,6 +144,8 @@ ASSET_RELPATH = 'assets'
 
 
 def main(args, options):
+  log.info("Options in use: %s", options)
+
   if options.api_port is None:
     app.error('Must specify --port')
 
