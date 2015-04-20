@@ -305,4 +305,6 @@ def main(args, options):
 LogOptions.disable_disk_logging()
 LogOptions.set_stderr_log_level('google:INFO')
 
-app.main()
+
+def proxy_main():
+  app.main()
