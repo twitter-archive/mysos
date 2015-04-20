@@ -5,11 +5,12 @@ import threading
 
 from twitter.common import log
 from twitter.common.quantity import Amount, Data
-from twitter.common_internal.keybird.keybird import KeyBird
 from twitter.mysos.common.decorators import synchronized
 
 from .sandbox import Sandbox
 from .task_control import TaskControl, TaskControlProvider
+
+import yaml
 
 
 MEM_FRACTION_FOR_BUFFER_POOL = 0.75
@@ -92,12 +93,15 @@ class MySQLTaskControl(TaskControl):
     self._buffer_pool_size = buffer_pool_size
 
     try:
-      keybird = KeyBird(admin_keypath)
-    except KeyBird.KeyBirdException as e:
-      raise TaskControl.Error("Unable to obtain admin credentials: %s" % e)
-    self._admin_username = keybird.get_creds("username")
-    self._admin_password = keybird.get_creds("password")
-    log.info("Loaded credentials for admin account %s" % self._admin_username)
+      with open(admin_keypath, "r") as f:
+        cred = yaml.load(f)
+      self._admin_username = cred["username"]
+      self._admin_password = cred["password"]
+      log.info("Loaded credentials for admin account %s" % self._admin_username)
+    except IOError as e:
+      raise ValueError("Unable to obtain admin credentials: %s" % e)
+    except (KeyError, yaml.YAMLError) as e:
+      raise ValueError("Invalid key file format %s" % e)
 
     self._lock = threading.Lock()
     self._process = None  # The singleton task process that launches mysqld.
