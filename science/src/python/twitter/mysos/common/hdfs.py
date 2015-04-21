@@ -23,6 +23,10 @@ class HDFSFetcher(Fetcher):
 
   def fetch(self, uri, directory):
     log.info("Fetching %s from HDFS" % uri)
+
+    if "JAVA_HOME" in os.environ:
+      log.info("Using JAVA_HOME '%s' for HDFS commands" % os.environ["JAVA_HOME"])
+
     config = os.environ.get("HADOOP_CONF_DIR", HADOOP_CONF_DIR)
     h = HDFSHelper(config, heap_limit=Amount(256, Data.MB))
     try:

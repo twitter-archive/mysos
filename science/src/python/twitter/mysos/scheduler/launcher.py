@@ -47,6 +47,7 @@ class MySQLClusterLauncher(object):
       admin_keypath,
       installer_args=None,
       backup_store_args=None,
+      executor_environ=None,
       framework_role='*',
       query_interval=Amount(1, Time.SECONDS)):
     """
@@ -61,6 +62,7 @@ class MySQLClusterLauncher(object):
       :param admin_keypath: See flags.
       :param installer_args: See flags.
       :param backup_store_args: See flags.
+      :param executor_environ: See flags.
       :param framework_role: See flags.
       :param query_interval: See MySQLMasterElector. Use the default value for production and allow
                              tests to use a different value.
@@ -86,6 +88,7 @@ class MySQLClusterLauncher(object):
     self._admin_keypath = admin_keypath
     self._installer_args = installer_args
     self._backup_store_args = backup_store_args
+    self._executor_environ = executor_environ
 
     # Used by the elector.
     self._query_interval = query_interval
@@ -225,6 +228,15 @@ class MySQLClusterLauncher(object):
 
     task.executor.executor_id.value = task_id  # Use task_id as executor_id.
     task.executor.command.value = self._executor_cmd
+
+    if self._executor_environ:  # Could be 'None' since it's an optional argument.
+      executor_environ_ = json.loads(self._executor_environ)
+      if executor_environ_:
+        for var_ in executor_environ_:
+          log.info("Executor will use environment variable: %s" % var_)
+          var = task.executor.command.environment.variables.add()
+          var.name = var_['name']
+          var.value = var_['value']
 
     uri = task.executor.command.uris.add()
     uri.value = self._executor_uri

@@ -68,6 +68,15 @@ app.add_option(
 
 
 app.add_option(
+    '--executor_environ',
+    dest='executor_environ',
+    default=None,
+    help="Environment variables for the executors (and the tasks) as a list of dicts keyed by "
+         "{name, value} in JSON. Note that these variables don't affect Mesos slave components "
+         "such as the fetcher")
+
+
+app.add_option(
     '--zk_url',
     dest='zk_url',
     default=None,
@@ -157,25 +166,25 @@ ASSET_RELPATH = 'assets'
 def main(args, options):
   log.info("Options in use: %s", options)
 
-  if options.api_port is None:
+  if not options.api_port:
     app.error('Must specify --port')
 
-  if options.mesos_master is None:
+  if not options.mesos_master:
     app.error('Must specify --mesos_master')
 
-  if options.framework_user is None:
+  if not options.framework_user:
     app.error('Must specify --framework_user')
 
-  if options.executor_uri is None:
+  if not options.executor_uri:
     app.error('Must specify --executor_uri')
 
-  if options.executor_cmd is None:
+  if not options.executor_cmd:
     app.error('Must specify --executor_cmd')
 
-  if options.zk_url is None:
+  if not options.zk_url:
     app.error('Must specify --zk_url')
 
-  if options.admin_keypath is None:
+  if not options.admin_keypath:
     app.error('Must specify --admin_keypath')
 
   try:
@@ -252,8 +261,9 @@ def main(args, options):
       options.zk_url,
       election_timeout,
       options.admin_keypath,
-      options.installer_args,
-      options.backup_store_args,
+      installer_args=options.installer_args,
+      backup_store_args=options.backup_store_args,
+      executor_environ=options.executor_environ,
       framework_role=options.framework_role)
 
   if fw_principal and fw_secret:

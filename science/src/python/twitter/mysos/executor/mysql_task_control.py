@@ -110,9 +110,15 @@ class MySQLTaskControl(TaskControl):
     if not os.path.isdir(self._scripts_dir):
       raise TaskControl.Error("Scripts directory %s does not exist" % self._scripts_dir)
 
-    self._conf_file = os.path.join(self._sandbox.bin, "mysql", "conf", "my.cnf")
+    custom_conf_file = os.environ.get('MYSOS_DEFAULTS_FILE', None)
+    if custom_conf_file:
+      log.info("Using 'MYSOS_DEFAULTS_FILE': %s" % custom_conf_file)
+      self._conf_file = custom_conf_file.strip()
+    else:
+      self._conf_file = os.path.join(self._sandbox.bin, "mysql", "conf", "my.cnf")
+
     if not os.path.isfile(self._conf_file):
-      raise TaskControl.Error("Option file %s does not exist" % self._scripts_dir)
+      raise TaskControl.Error("Option file %s does not exist" % self._conf_file)
 
   @synchronized
   def initialize(self, env):

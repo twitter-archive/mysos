@@ -45,6 +45,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       admin_keypath,
       installer_args=None,
       backup_store_args=None,
+      executor_environ=None,
       framework_role='*'):
     """
       :param state: The Scheduler object.
@@ -58,6 +59,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       :param admin_keypath: See flags.
       :param installer_args: See flags.
       :param backup_store_args: See flags.
+      :param executor_environ: See flags.
       :param kazoo: The Kazoo client for communicating MySQL cluster information between the
                     scheduler and the executors.
       :param zk_url: ZooKeeper URL for used by the scheduler and the executors to access ZooKeeper.
@@ -80,6 +82,7 @@ class MysosScheduler(mesos.interface.Scheduler):
     self._admin_keypath = admin_keypath
     self._installer_args = installer_args
     self._backup_store_args = backup_store_args
+    self._executor_environ = executor_environ
 
     self._driver = None  # Will be set by registered().
 
@@ -153,8 +156,9 @@ class MysosScheduler(mesos.interface.Scheduler):
           self._executor_cmd,
           self._election_timeout,
           self._admin_keypath,
-          self._installer_args,
-          self._backup_store_args,
+          installer_args=self._installer_args,
+          backup_store_args=self._backup_store_args,
+          executor_environ=self._executor_environ,
           framework_role=self._framework_role)
 
       return get_cluster_path(self._discover_zk_url, cluster_name), cluster.password
@@ -218,7 +222,10 @@ class MysosScheduler(mesos.interface.Scheduler):
           continue
         for task_id in cluster.tasks:
           self._tasks[task_id] = cluster.name  # Reconstruct the 'tasks' map.
-        # Order of launchers is preserved.
+        # Order of launchers is preserved thanks to the OrderedSet.
+        # For recovered launchers we use the currently specified --framework_role and
+        # --executor_environ, etc., instead of saving it in cluster state so the change in flags can
+        # be picked up by existing clusters.
         self._launchers[cluster.name] = MySQLClusterLauncher(
             self._driver,
             cluster,
@@ -232,9 +239,8 @@ class MysosScheduler(mesos.interface.Scheduler):
             self._admin_keypath,
             self._installer_args,
             self._backup_store_args,
-            self._framework_role)  # For recovered launchers we use the currently specified
-                                   # --framework_role and --use_dedicated_resources_only so that the
-                                   # change in flags can be picked up by existing clusters.
+            self._executor_environ,
+            self._framework_role)
       except StateProvider.Error as e:
         raise self.Error("Failed to recover cluster: %s" % e.message)
 
