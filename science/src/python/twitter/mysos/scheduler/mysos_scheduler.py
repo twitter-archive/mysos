@@ -17,8 +17,9 @@ from .zk_state import ZooKeeperStateProvider
 from kazoo.client import KazooClient
 
 import mesos.interface
-from mesos.interface.mesos_pb2 import FrameworkInfo
+from mesos.interface.mesos_pb2 import Credential, FrameworkInfo
 import mesos.native
+import yaml
 
 
 app.add_option(
@@ -138,6 +139,16 @@ app.add_option(
 )
 
 
+app.add_option(
+    '--framework_authentication_file',
+    dest='framework_authentication_file',
+    default=None,
+    help="Path to the key file for authenticating the framework against Mesos master. Framework "
+         "will fail to register with Mesos if authentication is required by Mesos and this option "
+         "is not provided"
+)
+
+
 FRAMEWORK_NAME = 'mysos'
 MYSOS_MODULE = 'twitter.mysos.scheduler'
 ASSET_RELPATH = 'assets'
@@ -182,6 +193,20 @@ def main(args, options):
   pkgutil.unpack_assets(web_assets_dir, MYSOS_MODULE, ASSET_RELPATH)
   log.info("Extracted web assets into %s" % options.work_dir)
 
+  fw_principal = None
+  fw_secret = None
+  if options.framework_authentication_file:
+    try:
+      with open(options.framework_authentication_file, "r") as f:
+        cred = yaml.load(f)
+      fw_principal = cred["principal"]
+      fw_secret = cred["secret"]
+      log.info("Loaded credential (principal=%s) for framework authentication" % fw_principal)
+    except IOError as e:
+      app.error("Unable to read the framework authentication key file: %s" % e)
+    except (KeyError, yaml.YAMLError) as e:
+      app.error("Invalid framework authentication key file format %s" % e)
+
   log.info("Starting Mysos scheduler")
 
   kazoo = KazooClient(zk_servers)
@@ -212,6 +237,8 @@ def main(args, options):
         checkpoint=True,
         failover_timeout=framework_failover_timeout.as_(Time.SECONDS),
         role=options.framework_role)
+    if fw_principal:
+      framework_info.principal = fw_principal
     state = Scheduler(framework_info)
     state_provider.dump_scheduler_state(state)
 
@@ -229,10 +256,18 @@ def main(args, options):
       options.backup_store_args,
       framework_role=options.framework_role)
 
-  scheduler_driver = mesos.native.MesosSchedulerDriver(
-      scheduler,
-      framework_info,
-      options.mesos_master)
+  if fw_principal and fw_secret:
+    cred = Credential(principal=fw_principal, secret=fw_secret)
+    scheduler_driver = mesos.native.MesosSchedulerDriver(
+        scheduler,
+        framework_info,
+        options.mesos_master,
+        cred)
+  else:
+    scheduler_driver = mesos.native.MesosSchedulerDriver(
+        scheduler,
+        framework_info,
+        options.mesos_master)
 
   scheduler_driver.start()
 
