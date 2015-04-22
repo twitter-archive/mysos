@@ -50,6 +50,11 @@ class StateProvider(object):
     """
     pass
 
+  @abstractmethod
+  def remove_cluster_state(self, cluster_name):
+    """Remove cluster-level state."""
+    pass
+
   # --- Helper methods. ---
   @classmethod
   def _get_scheduler_state_key(cls):
@@ -181,6 +186,15 @@ class LocalStateProvider(StateProvider):
         return cPickle.load(f)
     except PickleError as e:
       raise self.Error('Failed to recover MySQLCluster: %s' % e)
+
+  @abstractmethod
+  def remove_cluster_state(self, cluster_name):
+    path = self._get_cluster_state_path(cluster_name)
+    if not os.path.isfile(path):
+      log.info("No cluster state found on path %s" % path)
+      return
+
+    os.remove(path)
 
   # --- Helper methods. ---
   def _get_scheduler_state_path(self):

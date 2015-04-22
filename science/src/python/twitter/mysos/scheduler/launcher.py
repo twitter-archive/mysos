@@ -32,6 +32,7 @@ class MySQLClusterLauncher(object):
 
   class Error(Exception): pass
   class IncompatibleRoleError(Error): pass
+  class PermissionError(Error): pass
 
   def __init__(
       self,
@@ -121,6 +122,8 @@ class MySQLClusterLauncher(object):
       # New launcher, the elector is set when the election starts and reset to None when it ends.
       self._elector = None
 
+    self._terminating = False
+
   @property
   def cluster_name(self):
     return self._cluster.name
@@ -146,6 +149,9 @@ class MySQLClusterLauncher(object):
     with self._lock:
       if len(self._cluster.active_tasks) == self._cluster.num_nodes:
         # All nodes of this cluster have been launched and none have died.
+        return None, offer.resources
+
+      if self._terminating:
         return None, offer.resources
 
       cpus, mem, ports = self._get_resources(offer.resources)
@@ -188,6 +194,29 @@ class MySQLClusterLauncher(object):
       remaining = create_resources(
           cpus - task_cpus, mem - task_mem, ports - set([task_port]), role=self._framework_role)
       return task_info.task_id.value, remaining
+
+  def kill(self, password):
+    """
+      Kill the cluster.
+
+      NOTE: Cluster killing is asynchronous. Use 'terminated' property to check if all tasks in the
+      cluster are killed.
+    """
+    with self._lock:
+      if self._cluster.password != password:
+        raise self.PermissionError("No permission to kill cluster %s" % self.cluster_name)
+
+      self._terminating = True
+
+      # TODO(jyx): Task killing is unreliable. Reconciliation should retry killing.
+      for task_id in self._cluster.tasks:
+        log.info("Killing task %s of cluster %s" % (task_id, self.cluster_name))
+        self._driver.killTask(mesos_pb2.TaskID(value=task_id))
+
+  @property
+  def terminated(self):
+    """True if all tasks in the cluster are killed."""
+    return self._terminating and len(self._cluster.active_tasks) == 0
 
   def _get_resources(self, resources):
     """Return a tuple of the resources: cpus, mem, set of ports."""
@@ -362,10 +391,13 @@ class MySQLClusterLauncher(object):
             mesos_pb2.TaskState.Name(status.state),
             status.message))
       elif is_terminal(status.state):
-        log.error("Task %s is now in terminal state %s with message '%s'" % (
-            status.task_id.value,
-            mesos_pb2.TaskState.Name(status.state),
-            status.message))
+        if status.state == mesos_pb2.TASK_KILLED:
+          log.info("Task %s was successfully killed" % status.task_id.value)
+        else:
+          log.error("Task %s is now in terminal state %s with message '%s'" % (
+              status.task_id.value,
+              mesos_pb2.TaskState.Name(status.state),
+              status.message))
         del self._cluster.tasks[task_id]
 
         if task_id in self._cluster.members:
@@ -398,10 +430,25 @@ class MySQLClusterLauncher(object):
               "Task must exist in ClusterManager if it was running")
           log.warn("Slave %s of cluster %s failed to start running" % (task_id, self.cluster_name))
 
+        if self.terminated:
+          log.info("Shutting down launcher for cluster %s" % self.cluster_name)
+          self._shutdown()
+          return
+
         # Finally, checkpoint the status update.
         self._state_provider.dump_cluster_state(self._cluster)
         log.info("Checkpointed the status update for task %s of cluster %s" % (
             task_id, self.cluster_name))
+
+  def _shutdown(self):
+    self._cluster_manager.delete_cluster()
+    log.info("Deleted cluster %s from ZooKeeper" % self.cluster_name)
+    self._state_provider.remove_cluster_state(self.cluster_name)
+    log.info("Removed the state of cluster %s" % self.cluster_name)
+
+    if self._elector:
+      self._elector.abort()
+      self._elector = None
 
   def _master_elected(self, master_task):
     """

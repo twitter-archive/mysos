@@ -77,6 +77,13 @@ class ZooKeeperStateProvider(StateProvider):
     except (KazooException, PickleError, ValueError) as e:
       raise self.Error('Failed to recover MySQLCluster: %s' % e)
 
+  def remove_cluster_state(self, cluster_name):
+    path = self._get_cluster_state_path(cluster_name)
+    try:
+      self._client.retry(self._client.delete, path, recursive=True)
+    except KazooException as e:
+      raise self.Error("Failed to remove MySQLCluster: %s" % e)
+
   # --- Helper methods. ---
   def _get_scheduler_state_path(self):
     return posixpath.join(self._base_path, posixpath.join(*self._get_scheduler_state_key()))

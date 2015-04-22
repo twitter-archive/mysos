@@ -10,7 +10,8 @@ from twitter.mysos.common import zookeeper
 
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError
-from kazoo.recipe.watchers import ChildrenWatch
+from kazoo.protocol.states import EventType
+from kazoo.recipe.watchers import ChildrenWatch, DataWatch
 
 
 def get_cluster_path(zk_root, cluster_name):
@@ -41,6 +42,7 @@ class Cluster(object):
   MEMBER_PREFIX = "member_"  # Use the prefix so the path conforms to the ServerSet convention.
 
   def __init__(self, cluster_path):
+    self.cluster_path = cluster_path
     self.members = {}  # {ID : (serialized) ServiceInstance} mappings for members of the cluster.
     self.master = None  # The master's member ID.
     self.slaves_group = posixpath.join(cluster_path, self.SLAVES_GROUP)
@@ -53,6 +55,8 @@ class ClusterManager(object):
     Kazoo wrapper used by the scheduler to inform executors about cluster change.
     NOTE: ClusterManager is thread safe, i.e., it can be accessed from multiple threads at once.
   """
+
+  class Error(Exception): pass
 
   def __init__(self, client, cluster_path):
     """
@@ -171,6 +175,14 @@ class ClusterManager(object):
 
       return True
 
+  def delete_cluster(self):
+    with self._lock:
+      if self._cluster.members:
+        raise self.Error("Cannot remove a cluster that is not empty")
+
+      # Need to delete master/slave sub-dirs.
+      self._client.delete(self._cluster.cluster_path, recursive=True)
+
 
 # TODO(wickman): Implement kazoo connection acquiescence.
 class ClusterListener(object):
@@ -182,7 +194,8 @@ class ClusterListener(object):
                self_instance=None,
                promotion_callback=None,
                demotion_callback=None,
-               master_callback=None):
+               master_callback=None,
+               termination_callback=None):
     """
       :param client: Kazoo client.
       :param cluster_path: The path for this cluster on ZooKeeper.
@@ -190,6 +203,7 @@ class ClusterListener(object):
       :param promotion_callback: Invoked when 'self_instance' is promoted.
       :param demotion_callback: Invoked when 'self_instance' is demoted.
       :param master_callback: Invoked when there is a master change otherwise.
+      :param termination_callback: Invoked when the cluster is terminated.
       NOTE: Callbacks are executed synchronously in Kazoo's completion thread to ensure the delivery
             order of events. Blocking the callback method means no future callbacks will be invoked.
     """
@@ -201,12 +215,18 @@ class ClusterListener(object):
     self._promotion_callback = promotion_callback or (lambda: True)
     self._demotion_callback = demotion_callback or (lambda: True)
     self._master_callback = master_callback or (lambda x: True)
+    self._termination_callback = termination_callback or (lambda: True)
+
+    self._children_watch = None  # Set when the watcher detects that the master group exists.
 
   def start(self):
-    """Start the listener to watch the master group."""
-    # ChildrenWatch only works with an existing path.
-    self._client.ensure_path(self._cluster.master_group)
-    ChildrenWatch(self._client, self._cluster.master_group, func=self._child_callback)
+    """
+      Start the listener to watch the master group.
+
+      NOTE: The listener only starts watching master after the base ZNode for the group is created.
+    """
+    DataWatch(self._client, self._cluster.cluster_path, func=self._cluster_path_callback)
+    DataWatch(self._client, self._cluster.master_group, func=self._master_group_callback)
 
   def _swap(self, master, master_content):
     i_was_master = self._self_content and self._master_content == self._self_content
@@ -241,13 +261,27 @@ class ClusterListener(object):
     elif len(masters) == 0:
       self._swap(None, None)
 
+  def _cluster_path_callback(self, data, stat, event):
+    if event and event.type == EventType.DELETED:
+      self._termination_callback()
 
-def resolve_master(cluster_url, master_callback, zk_client=None):
+  def _master_group_callback(self, data, stat, event):
+    if stat and not self._children_watch:
+      log.info("Master group %s exists. Starting to watch for election result" %
+               self._cluster.master_group)
+      self._children_watch = ChildrenWatch(
+          self._client, self._cluster.master_group, func=self._child_callback)
+
+
+def resolve_master(
+      cluster_url, master_callback=lambda: True, termination_callback=lambda: True, zk_client=None):
   """
     Resolve the MySQL cluster master's endpoint from the given URL for this cluster.
     :param cluster_url: The ZooKeeper URL for this cluster.
     :param master_callback: A callback method with one argument: the ServiceInstance for the elected
                             master.
+    :param termination_callback: A callback method with no argument. Invoked when the cluster
+                                 terminates.
     :param zk_client: Use a custom ZK client instead of Kazoo if specified.
   """
   try:
@@ -259,7 +293,12 @@ def resolve_master(cluster_url, master_callback, zk_client=None):
     zk_client = KazooClient(zk_servers)
     zk_client.start()
 
-  listener = ClusterListener(zk_client, cluster_path, None, master_callback=master_callback)
+  listener = ClusterListener(
+      zk_client,
+      cluster_path,
+      None,
+      master_callback=master_callback,
+      termination_callback=termination_callback)
   listener.start()
 
 
@@ -271,7 +310,30 @@ def wait_for_master(cluster_url, zk_client=None):
     :return: The ServiceInstance for the elected master.
   """
   master = Queue.Queue()
-  resolve_master(cluster_url, lambda x: master.put(x), zk_client)
+  resolve_master(
+      cluster_url,
+      master_callback=lambda x: master.put(x),
+      termination_callback=lambda: True,
+      zk_client=zk_client)
   # Block forever but using sys.maxint makes the wait interruptable by Ctrl-C. See
   # http://bugs.python.org/issue1360.
   return master.get(True, sys.maxint)
+
+
+def wait_for_termination(cluster_url, zk_client=None):
+  """
+    Convenience function to wait for the cluster to terminate. The corresponding ZNode is removed
+    when the cluster terminates.
+    :param cluster_url: The ZooKeeper URL for this cluster.
+    :param zk_client: Use a custom ZK client instead of Kazoo if specified.
+  """
+  terminated = threading.Event()
+  resolve_master(
+    cluster_url,
+    master_callback=lambda x: True,
+    termination_callback=lambda: terminated.set(),
+    zk_client=zk_client)
+
+  # Block forever but using sys.maxint makes the wait interruptable by Ctrl-C. See
+  # http://bugs.python.org/issue1360.
+  terminated.wait(sys.maxint)

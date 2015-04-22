@@ -18,6 +18,7 @@ class CallbackHandler(object):
     self.promoted = threading.Event()
     self.demoted = threading.Event()
     self.detected = Queue.Queue()
+    self.terminated = threading.Event()
 
   def promotion_callback(self):
     self.promoted.set()
@@ -27,6 +28,9 @@ class CallbackHandler(object):
 
   def master_callback(self, master):
     self.detected.put(master)
+
+  def termination_callback(self):
+    self.terminated.set()
 
 
 class TestCluster(unittest.TestCase):
@@ -88,7 +92,8 @@ class TestCluster(unittest.TestCase):
         instance1,
         handler1.promotion_callback,
         handler1.demotion_callback,
-        handler1.master_callback)
+        handler1.master_callback,
+        handler1.termination_callback)
     listener1.start()
     member1 = manager.add_member(instance1)
 
@@ -104,7 +109,7 @@ class TestCluster(unittest.TestCase):
     listener2.start()
     member2 = manager.add_member(instance2)
 
-    # Test Promotion.
+    # Test promotion.
     manager.promote_member(member1)
 
     assert handler1.promoted.wait(1)
@@ -126,6 +131,11 @@ class TestCluster(unittest.TestCase):
 
     manager.remove_member(member2)
     assert handler2.demoted.wait(1)
+
+    # Test removing cluster.
+    manager.remove_member(member1)
+    manager.delete_cluster()
+    assert handler1.terminated.wait(1)
 
   def test_invalid_arguments(self):
     client = FakeClient()
@@ -178,3 +188,22 @@ class TestCluster(unittest.TestCase):
     assert member1 in manager2._cluster.members
     assert member2 in manager2._cluster.members
     assert manager2._cluster.members[member1] == ServiceInstance.pack(instance1)
+
+  def test_remove_cluster(self):
+    manager = ClusterManager(self.client, "/home/my_cluster")
+
+    instance1 = ServiceInstance(Endpoint("host1", 10000))
+    member1 = manager.add_member(instance1)
+    instance2 = ServiceInstance(Endpoint("host2", 10000))
+    member2 = manager.add_member(instance2)
+
+    manager.promote_member(member1)
+
+    with pytest.raises(ClusterManager.Error) as e:
+      manager.delete_cluster()
+
+    manager.remove_member(member1)
+    manager.remove_member(member2)
+    manager.delete_cluster()
+
+    assert "/home/my_cluster" not in self.storage.paths

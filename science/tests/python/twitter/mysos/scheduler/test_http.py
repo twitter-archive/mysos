@@ -50,24 +50,24 @@ class TestHTTP(unittest.TestCase):
     response = ('test_cluster_url', 'passwordfortestcluster')
     self._scheduler.set_response(response)
     body = self._app.post(
-        '/create/test_cluster', {'num_nodes': 3, 'cluster_user': 'mysos'}).normal_body
+        '/clusters/test_cluster', {'num_nodes': 3, 'cluster_user': 'mysos'}).normal_body
     assert json.loads(body) == dict(cluster_url=response[0], cluster_password=response[1])
 
   def test_create_cluster_exists(self):
     self._scheduler.set_exception(MysosScheduler.ClusterExists())
 
     with pytest.raises(AppError) as e:
-      assert self._app.post('/create/test_cluster', {'num_nodes': 3, 'cluster_user': 'mysos'})
+      assert self._app.post('/clusters/test_cluster', {'num_nodes': 3, 'cluster_user': 'mysos'})
     assert e.value.message.startswith('Bad response: 409')
 
   def test_create_cluster_value_error(self):
     self._scheduler.set_exception(ValueError())
     with pytest.raises(AppError) as e:
-      self._app.post('/create/test_cluster', {'num_nodes': 3, 'cluster_user': 'mysos'})
+      self._app.post('/clusters/test_cluster', {'num_nodes': 3, 'cluster_user': 'mysos'})
     assert e.value.message.startswith('Bad response: 400')
 
   def test_create_cluster_invalid_user(self):
     self._scheduler.set_exception(MysosScheduler.InvalidUser())
     with pytest.raises(AppError) as e:
-      self._app.post('/create/test_cluster', {'num_nodes': 3, 'cluster_user': 'mysos'})
+      self._app.post('/clusters/test_cluster', {'num_nodes': 3, 'cluster_user': 'mysos'})
     assert e.value.message.startswith('Bad response: 400')

@@ -3,6 +3,7 @@ import os
 
 from twitter.common.http import HttpServer, route, static_file
 
+from .launcher import MySQLClusterLauncher
 from .scheduler import MysosScheduler
 
 import bottle
@@ -20,7 +21,7 @@ class MysosServer(HttpServer):
 
     self._clusters_template = Template(filename=os.path.join(self._template_dir, 'clusters.html'))
 
-  @route('/create/<clustername>', method=['POST'])
+  @route('/clusters/<clustername>', method=['POST'])
   def create(self, clustername):
     """Create a db cluster."""
     cluster_name = clustername  # For naming consistency.
@@ -43,6 +44,22 @@ class MysosServer(HttpServer):
       raise bottle.HTTPResponse(e.message, status=503)
     except ValueError as e:
       raise bottle.HTTPResponse(e.message, status=400)
+
+
+  @route('/clusters/<clustername>', method=['DELETE'])
+  def remove(self, clustername):
+    """Remove a db cluster."""
+    cluster_name = clustername  # For naming consistency.
+
+    password = bottle.request.forms.get('password', default=None)
+
+    try:
+      cluster_zk_url = self._scheduler.delete_cluster(cluster_name, password)
+      return json.dumps(dict(cluster_url=cluster_zk_url))
+    except MysosScheduler.ClusterNotFound as e:
+      raise bottle.HTTPResponse(e.message, status=404)
+    except MySQLClusterLauncher.PermissionError as e:
+      raise bottle.HTTPResponse(e.message, status=403)
 
   @route('/', method=['GET'])
   def clusters(self):

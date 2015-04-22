@@ -169,7 +169,7 @@ class MySQLMasterElector(ExceptionalThread):
           log.warn("No slave is electable after timeout")
 
     if self._aborted.is_set():  # If asked to stop, directly return without triggering the callback.
-      log.info("Asked to stop the elector thread. Stopping...")
+      log.info("Asked to stop the elector thread for cluster %s. Stopping..." % self._cluster_name)
       return
 
     self._master_callback(self._master)  # Invoke the callback from the elector thread.

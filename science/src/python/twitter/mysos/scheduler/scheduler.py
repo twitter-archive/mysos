@@ -29,6 +29,7 @@ class MysosScheduler(mesos.interface.Scheduler):
   class Error(Exception): pass
 
   class ClusterExists(Error): pass
+  class ClusterNotFound(Error): pass
   class InvalidUser(Error): pass
   class ServiceUnavailable(Error): pass
 
@@ -162,6 +163,24 @@ class MysosScheduler(mesos.interface.Scheduler):
           framework_role=self._framework_role)
 
       return get_cluster_path(self._discover_zk_url, cluster_name), cluster.password
+
+  def delete_cluster(self, cluster_name, password):
+    """
+      :return: ZooKeeper URL for this Mysos cluster that can be used to wait for the termination of
+               the cluster.
+    """
+    with self._lock:
+      if not self._driver:
+        raise self.ServiceUnavailable("Service unavailable. Try again later")
+
+      if cluster_name not in self._state.clusters:
+        raise self.ClusterNotFound("Cluster '%s' not found" % cluster_name)
+
+      launcher = self._launchers[cluster_name]
+      launcher.kill(password)
+      log.info("Attempted to kill cluster %s" % cluster_name)
+
+      return get_cluster_path(self._discover_zk_url, cluster_name)
 
   @property
   def clusters(self):
@@ -304,11 +323,22 @@ class MysosScheduler(mesos.interface.Scheduler):
       # Forward the status update to the corresponding launcher.
       task_id = status.task_id.value
       launcher = self._get_launcher_by_task_id(task_id)
+      if not launcher:
+        log.info("Cluster for task %s doesn't exist. It could have been removed" % task_id)
+        return
+
       try:
         launcher.status_update(status)
       except MySQLClusterLauncher.Error as e:
         log.error("Status update failed due to launcher error: %s" % e.message)
         self._stop()
+
+      if launcher.terminated:
+        log.info("Deleting the launcher for cluster %s because the cluster has terminated" %
+                 launcher.cluster_name)
+        self._state.clusters.discard(launcher.cluster_name)
+        self._state_provider.dump_scheduler_state(self._state)
+        del self._launchers[launcher.cluster_name]
 
   @logged
   def frameworkMessage(self, driver, executorId, slaveId, message):
@@ -333,7 +363,7 @@ class MysosScheduler(mesos.interface.Scheduler):
     # be found but we should clean it up when tasks die.
     assert task_id in self._tasks
     cluster_name = self._tasks[task_id]
-    return self._launchers[cluster_name]
+    return self._launchers.get(cluster_name)  # Cluster could have been removed.
 
 
 def shuffled(li):

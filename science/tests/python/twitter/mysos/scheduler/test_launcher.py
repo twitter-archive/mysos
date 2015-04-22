@@ -496,3 +496,54 @@ class TestLauncher(object):
 
     # The second slave has the larger position and is elected.
     assert "/mysos/test/cluster0/master/member_0000000002" in self._storage.paths
+
+  def test_launcher_kill(self):
+    for i in range(self._cluster.num_nodes):
+      task_id, remaining = self._launcher.launch(self._offer)
+      del self._offer.resources[:]
+      self._offer.resources.extend(remaining)
+      assert task_id == "mysos-cluster0-%s" % i
+
+    tasks = self._driver.method_calls["launchTasks"]
+    assert len(tasks) == self._cluster.num_nodes
+
+    # No new tasks are launched.
+    assert self._launcher.launch(self._offer)[0] is None
+    assert len(self._driver.method_calls["launchTasks"]) == self._cluster.num_nodes
+
+    # All 3 nodes have successfully started.
+    status = mesos_pb2.TaskStatus()
+    status.state = mesos_pb2.TASK_RUNNING  # Valid state.
+    status.slave_id.value = self._offer.slave_id.value
+    for i in range(self._cluster.num_nodes):
+      status.task_id.value = "mysos-cluster0-%s" % i
+      self._launcher.status_update(status)
+
+    deadline(
+        lambda: wait_for_master(
+            get_cluster_path(self._zk_url, self._cluster.name),
+            self._zk_client),
+        Amount(5, Time.SECONDS))
+
+    # The first slave is elected.
+    assert "/mysos/test/cluster0/master/member_0000000000" in self._storage.paths
+    # Two slaves.
+    assert len([x for x in self._storage.paths.keys() if x.startswith(
+        "/mysos/test/cluster0/slaves/member_")]) == 2
+
+    # Kill the cluster.
+    with pytest.raises(MySQLClusterLauncher.PermissionError):
+      self._launcher.kill("wrong_password")
+
+    self._launcher.kill(self._cluster.password)  # Correct password.
+
+    # All 3 nodes are successfully killed.
+    status = mesos_pb2.TaskStatus()
+    status.state = mesos_pb2.TASK_KILLED
+    status.slave_id.value = self._offer.slave_id.value
+    for i in range(self._cluster.num_nodes):
+      status.task_id.value = "mysos-cluster0-%s" % i
+      self._launcher.status_update(status)
+
+    assert "/mysos/test/cluster0" not in self._storage.paths  # ServerSets removed.
+    assert not self._state_provider.load_cluster_state("cluster0")  # State removed.
