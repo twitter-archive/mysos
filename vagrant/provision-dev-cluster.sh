@@ -1,16 +1,20 @@
 #!/bin/bash -x
 
-# This script requires mysos binaries to be built. (Use build.sh)
+# This script requires mysos binaries to be built. Run `tox` first.
 
 # Install dependencies.
-aptitude update
-aptitude -y install \
+export DEBIAN_FRONTEND=noninteractive
+aptitude update -q
+aptitude install -q -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
     libcurl3-dev \
     libsasl2-dev \
     python-dev \
     zookeeper \
     mysql-server-5.6 \
-    libunwind8
+    libmysqlclient-dev \
+    libunwind8 \
+    python-virtualenv \
+    bison flex  # For libnl.
 
 # Fix up a dependency issue of Mesos egg: _mesos.so links to libunwind.so.7 but Trusty only has
 # libunwind.so.8.
@@ -24,12 +28,14 @@ ln -sf /usr/share/doc/mysql-server-5.6/examples/my-default.cnf /usr/share/mysql/
 # the hostname to the user, or other components.
 hostname 192.168.33.7
 
-# Install a update-mysos tool to sync mysos binaries and configs into the VM.
+# Install an update-mysos tool to sync mysos binaries and configs into the VM.
 cat > /usr/local/bin/update-mysos <<EOF
 #!/bin/bash
 mkdir -p /home/vagrant/mysos
 rsync -urzvh /vagrant/vagrant/ /home/vagrant/mysos/vagrant/ --delete
-rsync -urzvh /mysos/dist/ /home/vagrant/mysos/dist/ --delete
+rsync -urzvh /vagrant/.tox/dist/ /home/vagrant/mysos/dist/ --delete
+rsync -urzvh /vagrant/3rdparty/ /home/vagrant/mysos/deps/ --delete
+chown -R vagrant:vagrant /home/vagrant/mysos
 EOF
 chmod +x /usr/local/bin/update-mysos
 sudo -u vagrant update-mysos
@@ -39,14 +45,16 @@ MESOS_VERSION=0.20.1
 UBUNTU_YEAR=14
 UBUNTU_MONTH=04
 
+pushd /home/vagrant/mysos/deps
 if [ ! -f mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.deb ]; then
-    wget -c http://downloads.mesosphere.io/master/ubuntu/${UBUNTU_YEAR}.${UBUNTU_MONTH}/mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.deb
+    wget –quiet -c http://downloads.mesosphere.io/master/ubuntu/${UBUNTU_YEAR}.${UBUNTU_MONTH}/mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.deb
     dpkg --install --force-confdef --force-confold \
-        mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.deb
+        /home/vagrant/mysos/deps/mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.deb
 fi
+popd
 
 # Install the upstart configurations.
-cp /vagrant/vagrant/upstart/*.conf /etc/init
+cp /home/vagrant/mysos/vagrant/upstart/*.conf /etc/init
 
 # (Re)start services with new conf.
 stop zookeeper ; start zookeeper

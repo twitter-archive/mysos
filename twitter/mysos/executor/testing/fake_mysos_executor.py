@@ -51,19 +51,21 @@ class FakeTaskRunnerProvider(TaskRunnerProvider):
         Fake())
 
 
-def main(args, options):
-  log.info('Starting testing mysos executor')
-
-  executor = MysosExecutor(
-      FakeTaskRunnerProvider(FakeTaskControlProvider()), Sandbox(SANDBOX_ROOT))
-
-  driver = mesos.native.MesosExecutorDriver(executor)
-  driver.run()
-
-  log.info('Exiting executor main')
-
-LogOptions.disable_disk_logging()
-
 # This is a testing executor. We log more verbosely.
+LogOptions.disable_disk_logging()
 LogOptions.set_stderr_log_level('google:DEBUG')
-app.main()
+
+
+def proxy_main():
+  def main(args, options):
+    log.info('Starting testing mysos executor')
+
+    executor = MysosExecutor(
+        FakeTaskRunnerProvider(FakeTaskControlProvider()), Sandbox(SANDBOX_ROOT))
+
+    driver = mesos.native.MesosExecutorDriver(executor)
+    driver.run()
+
+    log.info('Exiting executor main')
+
+  app.main()

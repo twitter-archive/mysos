@@ -73,10 +73,9 @@ class TestZooKeeperStateProvider(unittest.TestCase):
     assert expected.tasks['task1'].port == actual.tasks['task1'].port
 
   def test_cluster_state_errors(self):
-    with pytest.raises(StateProvider.Error):
-      self._state_provider.load_cluster_state('nonexistent')
+    assert not self._state_provider.load_cluster_state('nonexistent')
 
     self._client.ensure_path("/mysos/state/clusters")
-    self._client.create("/mysos/state/cluster1", cPickle.dumps(object()))
+    self._client.create("/mysos/state/clusters/cluster1", cPickle.dumps(object()))
     with pytest.raises(StateProvider.Error):
       self._state_provider.load_cluster_state('cluster1')

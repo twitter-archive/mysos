@@ -33,9 +33,9 @@ def test_scheduler_runs():
     executors in separate processes but they are unit-tested separately.
   """
 
-  # Make sure fake_mysos_executor.pex is built and available to be fetched by Mesos slave.
-  assert subprocess.call([
-      "./pants", "binary", "src/python/twitter/mysos/executor/testing:fake_mysos_executor"]) == 0
+  # Make sure fake_mysos_executor.pex is available to be fetched by Mesos slave.
+  # TODO(xujyan): Fix this as we don't use pex here anymore.
+  assert os.path.isfile('dist/fake_mysos_executor.pex')
 
   storage = FakeStorage(SequentialThreadingHandler())
   zk_client = FakeClient(storage=storage)
