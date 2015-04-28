@@ -1,5 +1,7 @@
 #!/bin/sh
 
+# This is an 'end-to-end' test that requires Mysos to be up and running in the Vagrant VM.
+
 set -ue
 
 host="192.168.33.7"
@@ -9,7 +11,7 @@ num_nodes=1
 cluster_user="mysos"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-executable=$HERE/.tox/py27/bin/mysos_test_client
+executable=$HERE/../.tox/py27/bin/mysos_test_client
 
 if [ ! -f ${executable} ]; then
   echo "${executable} doesn't exist. Build it first."
