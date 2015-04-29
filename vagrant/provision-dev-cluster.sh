@@ -34,7 +34,7 @@ cat > /usr/local/bin/update-mysos <<EOF
 mkdir -p /home/vagrant/mysos
 rsync -urzvh /vagrant/vagrant/ /home/vagrant/mysos/vagrant/ --delete
 rsync -urzvh /vagrant/.tox/dist/ /home/vagrant/mysos/dist/ --delete
-rsync -urzvh /vagrant/3rdparty/ /home/vagrant/mysos/deps/ --delete
+rsync -urzvh /vagrant/3rdparty/ /home/vagrant/mysos/3rdparty/ --delete
 
 # Install the upstart configurations.
 sudo cp /home/vagrant/mysos/vagrant/upstart/*.conf /etc/init
@@ -48,11 +48,19 @@ MESOS_VERSION=0.20.1
 UBUNTU_YEAR=14
 UBUNTU_MONTH=04
 
+mkdir -p /home/vagrant/mysos/deps
 pushd /home/vagrant/mysos/deps
 if [ ! -f mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.deb ]; then
-    wget –quiet -c http://downloads.mesosphere.io/master/ubuntu/${UBUNTU_YEAR}.${UBUNTU_MONTH}/mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.deb
+    curl --silent --output mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.deb \
+        http://downloads.mesosphere.io/master/ubuntu/${UBUNTU_YEAR}.${UBUNTU_MONTH}/mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.deb
     dpkg --install --force-confdef --force-confold \
         /home/vagrant/mysos/deps/mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.deb
+fi
+
+if [ ! -f mesos.native-${MESOS_VERSION}-cp27-none-linux_x86_64.whl ]; then
+    # NOTE: We rename the output file here so the egg is properly named.
+    curl --silent --output mesos.native-${MESOS_VERSION}-py2.7-linux-x86_64.egg http://downloads.mesosphere.io/master/ubuntu/${UBUNTU_YEAR}.${UBUNTU_MONTH}/mesos-${MESOS_VERSION}-py2.7-linux-x86_64.egg
+    python -m wheel convert mesos.native-${MESOS_VERSION}-py2.7-linux-x86_64.egg
 fi
 popd
 
