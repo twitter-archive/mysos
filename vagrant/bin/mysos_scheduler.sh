@@ -8,7 +8,7 @@ virtualenv $TMPDIR  # Create venv under /tmp.
 $TMPDIR/bin/pip install --find-links /home/vagrant/mysos/deps mesos.native
 $TMPDIR/bin/pip install --pre --find-links /home/vagrant/mysos/dist mysos
 
-ZK_HOST=192.168.33.7
+ZK_HOST=192.168.33.17
 API_PORT=55001
 
 # NOTE: In --executor_environ we are pointing MYSOS_DEFAULTS_FILE to an empty MySQL defaults file.

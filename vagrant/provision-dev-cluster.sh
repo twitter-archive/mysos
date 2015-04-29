@@ -26,7 +26,7 @@ ln -sf /usr/share/doc/mysql-server-5.6/examples/my-default.cnf /usr/share/mysql/
 
 # Set the hostname to the IP address. This simplifies things for components that want to advertise
 # the hostname to the user, or other components.
-hostname 192.168.33.7
+hostname 192.168.33.17
 
 # Install an update-mysos tool to sync mysos binaries and configs into the VM.
 cat > /usr/local/bin/update-mysos <<EOF
@@ -35,6 +35,9 @@ mkdir -p /home/vagrant/mysos
 rsync -urzvh /vagrant/vagrant/ /home/vagrant/mysos/vagrant/ --delete
 rsync -urzvh /vagrant/.tox/dist/ /home/vagrant/mysos/dist/ --delete
 rsync -urzvh /vagrant/3rdparty/ /home/vagrant/mysos/deps/ --delete
+
+# Install the upstart configurations.
+sudo cp /home/vagrant/mysos/vagrant/upstart/*.conf /etc/init
 chown -R vagrant:vagrant /home/vagrant/mysos
 EOF
 chmod +x /usr/local/bin/update-mysos
@@ -52,9 +55,6 @@ if [ ! -f mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.d
         /home/vagrant/mysos/deps/mesos_${MESOS_VERSION}-1.0.ubuntu${UBUNTU_YEAR}${UBUNTU_MONTH}_amd64.deb
 fi
 popd
-
-# Install the upstart configurations.
-cp /home/vagrant/mysos/vagrant/upstart/*.conf /etc/init
 
 # (Re)start services with new conf.
 stop zookeeper ; start zookeeper

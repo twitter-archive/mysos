@@ -4,7 +4,7 @@
 
 set -ue
 
-host="192.168.33.7"
+host="192.168.33.17"
 port=55001
 cluster_name="test_cluster$((RANDOM % 1000))"
 num_nodes=1
