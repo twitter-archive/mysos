@@ -36,10 +36,9 @@ setup(
     ],
     keywords='mesos mysql',
     packages=find_packages(exclude=['tests*']),
-    namespace_packages=['twitter'],
     package_data={
-        '': (list_package_data_files('twitter/mysos/executor', 'files') +
-             list_package_data_files('twitter/mysos/scheduler', 'assets'))
+        '': (list_package_data_files('mysos/executor', 'files') +
+             list_package_data_files('mysos/scheduler', 'assets'))
     },
     install_requires=[
         'cherrypy==3.2.2',
@@ -66,11 +65,11 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'mysos_scheduler=twitter.mysos.scheduler.mysos_scheduler:proxy_main',
-            'mysos_executor=twitter.mysos.executor.mysos_executor:proxy_main',
-            'vagrant_mysos_executor=twitter.mysos.executor.testing.vagrant_mysos_executor:proxy_main',
-            'fake_mysos_executor=twitter.mysos.executor.testing.fake_mysos_executor:proxy_main',
-            'mysos_test_client=twitter.mysos.testing.mysos_test_client:proxy_main',
+            'mysos_scheduler=mysos.scheduler.mysos_scheduler:proxy_main',
+            'mysos_executor=mysos.executor.mysos_executor:proxy_main',
+            'vagrant_mysos_executor=mysos.executor.testing.vagrant_mysos_executor:proxy_main',
+            'fake_mysos_executor=mysos.executor.testing.fake_mysos_executor:proxy_main',
+            'mysos_test_client=mysos.testing.mysos_test_client:proxy_main',
         ],
     },
 )
