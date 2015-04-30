@@ -2,7 +2,7 @@ import os
 from setuptools import setup, find_packages
 
 
-COMMONS_VERSION = '>=0.3.1,<0.4'
+COMMONS_VERSION = '==0.3.2'
 MESOS_VERSION = '==0.20.1'
 
 
