@@ -43,11 +43,11 @@ your platform is placed in `3rdparty/`. Then run:
 Tox also builds the Mysos source package and drops it in `.tox/dist`.
 
 ### End-to-end test in the Vagrant VM
-The Vagrant tests uses the `sdist` Mysos package in `.tox/dist` so be sure to run `tox` first. Then:
+The Vagrant test uses the `sdist` Mysos package in `.tox/dist` so be sure to run `tox` first. Then:
 
     vagrant up
     
-    # Wait for the VM and Mysos API endpoint to come up (http://192.168.33.7:55001 becomes available).
+    # Wait for the VM and Mysos API endpoint to come up (http://192.168.33.17:55001 becomes available).
     
     ./vagrant/test.sh
 
