@@ -33,7 +33,6 @@ def test_scheduler_runs():
   import mesos.native
 
   # Make sure fake_mysos_executor.pex is available to be fetched by Mesos slave.
-  # TODO(xujyan): Fix this as we don't use pex here anymore.
   assert os.path.isfile('dist/fake_mysos_executor.pex')
 
   storage = FakeStorage(SequentialThreadingHandler())

@@ -68,7 +68,6 @@ setup(
             'mysos_scheduler=mysos.scheduler.mysos_scheduler:proxy_main [driver]',
             'mysos_executor=mysos.executor.mysos_executor:proxy_main [driver]',
             'vagrant_mysos_executor=mysos.executor.testing.vagrant_mysos_executor:proxy_main [driver]',
-            'fake_mysos_executor=mysos.executor.testing.fake_mysos_executor:proxy_main [driver]',
             'mysos_test_client=mysos.testing.mysos_test_client:proxy_main',
         ],
     },

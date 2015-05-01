@@ -22,8 +22,8 @@ Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/L
  * Python 2.7
  * Mesos Python bindings
 
-## Building and Testing
-### Build/Download Mesos Python Bindings
+## Building
+### Building/Downloading Mesos Python Bindings
 Mysos uses Mesos Python bindings which consist of two Python packages. `mesos.interface` is on PyPI
 and gets automatically installed but `mesos.native` is platform dependent. You need to either build
 the package on your machine ([instructions](http://mesos.apache.org/gettingstarted/)) or download a
@@ -34,14 +34,37 @@ Since `pip` doesn't support eggs, you need to convert eggs into wheels using `wh
 drop them into the `3rdparty` folder. See the [README file](3rdparty/README.md) for more
 information.
 
+### Building Mysos
+Mysos mainly consists of two components that are built and deployed separately.
+
+- `mysos_scheduler`: The scheduler that connects to Mesos master and manages the MySQL clusters.
+- `mysos_executor`: The executor that is launched by Mesos slave (upon `mysos_scheduler`'s request)
+to carry out MySQL tasks.
+
+One way to package these components and their dependencies into a self-contained executable is to
+use [PEX](https://pex.readthedocs.org/en/latest/). This allow Mysos components to be launched
+quickly and reliably. See
+[End-to-end test using PEX](#end-to-end-test-on-a-local-mesos-cluster-and-pex) for an example of
+packaging and deploying the executor using PEX.
+
+## Testing
 ### Unit Tests
 Make sure [tox](https://tox.readthedocs.org/en/latest/) is installed and just run:
 
     tox
 
-Tox also builds the Mysos source package and drops it in `.tox/dist`.
+The unit tests don't require the `mesos.native` package to be available in `3rdparty`. Tox also
+builds the Mysos source package and drops it in `.tox/dist`.
 
-### End-to-end test in the Vagrant VM
+### End-to-end Test on a Local Mesos Cluster and PEX
+Build/download the `mesos.native` package and put it in `3rdparty` and then run:
+
+    tox -e pex
+
+This test demonstrates how to package a PEX executor and use it to launch a *fake* MySQL cluster on
+a *local* Mesos cluster.
+
+### End-to-end Test on a Real Mesos Cluster in a Vagrant VM
 The Vagrant test uses the `sdist` Mysos package in `.tox/dist` so be sure to run `tox` first. Then:
 
     vagrant up
