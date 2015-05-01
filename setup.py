@@ -45,7 +45,6 @@ setup(
         'kazoo==1.3.1',
         'mako==0.4.0',
         'mesos.interface{0}'.format(MESOS_VERSION),
-        'mesos.native{0}'.format(MESOS_VERSION),
         'mysql-python',
         'pyyaml==3.10',
         'sqlalchemy',
@@ -62,13 +61,14 @@ setup(
     ],
     extras_require={
         'test': ['webtest',],
+        'driver': ['mesos.native{0}'.format(MESOS_VERSION),],
     },
     entry_points={
         'console_scripts': [
-            'mysos_scheduler=mysos.scheduler.mysos_scheduler:proxy_main',
-            'mysos_executor=mysos.executor.mysos_executor:proxy_main',
-            'vagrant_mysos_executor=mysos.executor.testing.vagrant_mysos_executor:proxy_main',
-            'fake_mysos_executor=mysos.executor.testing.fake_mysos_executor:proxy_main',
+            'mysos_scheduler=mysos.scheduler.mysos_scheduler:proxy_main [driver]',
+            'mysos_executor=mysos.executor.mysos_executor:proxy_main [driver]',
+            'vagrant_mysos_executor=mysos.executor.testing.vagrant_mysos_executor:proxy_main [driver]',
+            'fake_mysos_executor=mysos.executor.testing.fake_mysos_executor:proxy_main [driver]',
             'mysos_test_client=mysos.testing.mysos_test_client:proxy_main',
         ],
     },

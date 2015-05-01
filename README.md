@@ -35,8 +35,7 @@ drop them into the `3rdparty` folder. See the [README file](3rdparty/README.md) 
 information.
 
 ### Unit Tests
-Make sure [tox](https://tox.readthedocs.org/en/latest/) is installed and a `mesos.native` wheel for
-your platform is placed in `3rdparty/`. Then run:
+Make sure [tox](https://tox.readthedocs.org/en/latest/) is installed and just run:
 
     tox
 

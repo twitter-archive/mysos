@@ -9,7 +9,6 @@ from mysos.scheduler.state import LocalStateProvider, Scheduler
 from kazoo.handlers.threading import SequentialThreadingHandler
 import mesos.interface
 from mesos.interface.mesos_pb2 import DRIVER_STOPPED, FrameworkInfo
-import mesos.native
 from twitter.common import log
 from twitter.common.concurrent import deadline
 from twitter.common.dirutil import safe_mkdtemp
@@ -31,6 +30,7 @@ def test_scheduler_runs():
     NOTE: Due to the limitation of zake the scheduler's ZK operations are not propagated to
     executors in separate processes but they are unit-tested separately.
   """
+  import mesos.native
 
   # Make sure fake_mysos_executor.pex is available to be fetched by Mesos slave.
   # TODO(xujyan): Fix this as we don't use pex here anymore.
