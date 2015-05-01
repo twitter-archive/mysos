@@ -44,7 +44,6 @@ class MysosServer(HttpServer):
     except ValueError as e:
       raise bottle.HTTPResponse(e.message, status=400)
 
-
   @route('/clusters/<clustername>', method=['DELETE'])
   def remove(self, clustername):
     """Remove a db cluster."""

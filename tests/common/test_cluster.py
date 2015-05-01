@@ -10,6 +10,7 @@ from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstanc
 from zake.fake_client import FakeClient
 from zake.fake_storage import FakeStorage
 
+
 class CallbackHandler(object):
   """Utility for testing callbacks."""
 
@@ -198,7 +199,7 @@ class TestCluster(unittest.TestCase):
 
     manager.promote_member(member1)
 
-    with pytest.raises(ClusterManager.Error) as e:
+    with pytest.raises(ClusterManager.Error):
       manager.delete_cluster()
 
     manager.remove_member(member1)

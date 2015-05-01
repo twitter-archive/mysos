@@ -102,7 +102,10 @@ def proxy_main():
     master_endpoint = wait_for_master(result['cluster_url']).service_endpoint
 
     connection_str = "mysql://%s:%s@%s:%d/" % (
-        options.cluster_user, result["cluster_password"], master_endpoint.host, master_endpoint.port)
+        options.cluster_user,
+        result["cluster_password"],
+        master_endpoint.host,
+        master_endpoint.port)
     log.info("Connecting to the MySQL cluster master: %s" % connection_str)
     engine = create_engine(connection_str)
 

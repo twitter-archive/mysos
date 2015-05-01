@@ -281,8 +281,8 @@ def proxy_main():
 
     try:
       # Wait for the scheduler to stop.
-      # The use of 'stopped' event instead of scheduler_driver.join() is necessary to stop the process
-      # with SIGINT.
+      # The use of 'stopped' event instead of scheduler_driver.join() is necessary to stop the
+      # process with SIGINT.
       while not scheduler.stopped.wait(timeout=0.5):
         pass
     except KeyboardInterrupt:
