@@ -186,7 +186,7 @@ class TestTaskRunner(unittest.TestCase):
             "Command 'exit 1' returned non-zero exit status 1")
 
   def test_stop_interminable(self):
-    cmd = """trap "echo Trapped SIGTERM!" SIGTERM
+    cmd = """trap "echo Trapped SIGTERM!" TERM
 while :
 do
   sleep 60
