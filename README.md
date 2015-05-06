@@ -23,6 +23,8 @@ Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/L
  * Mesos Python bindings
 
 ## Building
+[![Build status on Travis CI](https://api.travis-ci.org/twitter/mysos.svg)](https://travis-ci.org/twitter/mysos)
+
 ### Building/Downloading Mesos Python Bindings
 Mysos uses Mesos Python bindings which consist of two Python packages. `mesos.interface` is on PyPI
 and gets automatically installed but `mesos.native` is platform dependent. You need to either build
