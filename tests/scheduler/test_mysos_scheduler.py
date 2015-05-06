@@ -7,7 +7,6 @@ from mysos.scheduler.scheduler import MysosScheduler
 from mysos.scheduler.state import LocalStateProvider, Scheduler
 
 from kazoo.handlers.threading import SequentialThreadingHandler
-import mesos.interface
 from mesos.interface.mesos_pb2 import DRIVER_STOPPED, FrameworkInfo
 from twitter.common import log
 from twitter.common.concurrent import deadline
