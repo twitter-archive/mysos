@@ -3,6 +3,7 @@ import os
 import posixpath
 
 from mysos.common.cluster import get_cluster_path, wait_for_master
+from mysos.scheduler.password import gen_encryption_key
 from mysos.scheduler.scheduler import MysosScheduler
 from mysos.scheduler.state import LocalStateProvider, Scheduler
 
@@ -60,7 +61,8 @@ def test_scheduler_runs():
       zk_client,
       zk_url,
       Amount(40, Time.SECONDS),
-      "/fakepath")
+      "/fakepath",
+      gen_encryption_key())
 
   scheduler_driver = mesos.native.MesosSchedulerDriver(
       scheduler,

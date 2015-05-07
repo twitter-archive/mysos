@@ -85,13 +85,13 @@ class MySQLCluster(object):
     It includes tasks (MySQLTask) for members of the cluster.
   """
 
-  def __init__(self, name, user, password, num_nodes, backup_id=None):
+  def __init__(self, name, user, encrypted_password, num_nodes, backup_id=None):
     if not isinstance(num_nodes, int):
       raise TypeError("'num_nodes' should be an int")
 
     self.name = name
     self.user = user
-    self.password = password
+    self.encrypted_password = encrypted_password
     self.num_nodes = num_nodes
     self.backup_id = backup_id
 
@@ -187,7 +187,6 @@ class LocalStateProvider(StateProvider):
     except PickleError as e:
       raise self.Error('Failed to recover MySQLCluster: %s' % e)
 
-  @abstractmethod
   def remove_cluster_state(self, cluster_name):
     path = self._get_cluster_state_path(cluster_name)
     if not os.path.isfile(path):

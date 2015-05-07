@@ -119,6 +119,12 @@ def proxy_main():
            "'local' is chosen and the state is persisted under <work_dir>/state; see --work_dir")
 
   app.add_option(
+      '--scheduler_keypath',
+      dest='scheduler_keypath',
+      help="Path to the key file that the scheduler uses to store secrets such as MySQL "
+           "cluster passwords. This key must be exactly 32 bytes long")
+
+  app.add_option(
       '--framework_failover_timeout',
       dest='framework_failover_timeout',
       default='14d',
@@ -177,6 +183,9 @@ def proxy_main():
     if not options.admin_keypath:
       app.error('Must specify --admin_keypath')
 
+    if not options.scheduler_keypath:
+      app.error('Must specify --scheduler_keypath')
+
     try:
       election_timeout = parse_time(options.election_timeout)
       framework_failover_timeout = parse_time(options.framework_failover_timeout)
@@ -205,6 +214,15 @@ def proxy_main():
         app.error("Unable to read the framework authentication key file: %s" % e)
       except (KeyError, yaml.YAMLError) as e:
         app.error("Invalid framework authentication key file format %s" % e)
+
+    scheduler_key = None
+    try:
+      with open(options.scheduler_keypath, 'rb') as f:
+        scheduler_key = f.read().strip()
+        if not scheduler_key:
+          raise ValueError("The key file is empty")
+    except Exception as e:
+      app.error("Cannot read --scheduler_keypath: %s" % e)
 
     log.info("Starting Mysos scheduler")
 
@@ -251,6 +269,7 @@ def proxy_main():
         options.zk_url,
         election_timeout,
         options.admin_keypath,
+        scheduler_key,
         installer_args=options.installer_args,
         backup_store_args=options.backup_store_args,
         executor_environ=options.executor_environ,

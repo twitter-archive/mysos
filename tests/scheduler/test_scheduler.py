@@ -9,6 +9,7 @@ from mysos.scheduler.scheduler import (
     INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION,
     MysosScheduler)
 from mysos.scheduler.launcher import create_resources
+from mysos.scheduler.password import gen_encryption_key, PasswordBox
 from mysos.scheduler.state import LocalStateProvider, MySQLCluster, Scheduler
 
 from kazoo.handlers.threading import SequentialThreadingHandler
@@ -68,6 +69,8 @@ class TestScheduler(unittest.TestCase):
     shutil.rmtree(self._tmpdir, True)  # Clean up after ourselves.
 
   def test_scheduler_recovery(self):
+    scheduler_key = gen_encryption_key()
+
     scheduler1 = MysosScheduler(
         self._state,
         self._state_provider,
@@ -77,7 +80,8 @@ class TestScheduler(unittest.TestCase):
         self._zk_client,
         self._zk_url,
         Amount(5, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml")
+        "/etc/mysos/admin_keyfile.yml",
+        scheduler_key)
     scheduler1.registered(self._driver, self._framework_id, object())
     scheduler1.create_cluster("cluster1", "mysql_user", 3)
     scheduler1.resourceOffers(self._driver, [self._offer])
@@ -102,7 +106,8 @@ class TestScheduler(unittest.TestCase):
         self._zk_client,
         self._zk_url,
         Amount(5, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml")
+        "/etc/mysos/admin_keyfile.yml",
+        scheduler_key)
 
     # Scheduler always receives registered() with the same FrameworkID after failover.
     scheduler2.registered(self._driver, self._framework_id, object())
@@ -115,6 +120,8 @@ class TestScheduler(unittest.TestCase):
       scheduler2.create_cluster("cluster1", "mysql_user", 3)
 
   def test_scheduler_recovery_failure_before_launch(self):
+    scheduler_key = gen_encryption_key()
+
     scheduler1 = MysosScheduler(
         self._state,
         self._state_provider,
@@ -124,9 +131,10 @@ class TestScheduler(unittest.TestCase):
         self._zk_client,
         self._zk_url,
         Amount(5, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml")
+        "/etc/mysos/admin_keyfile.yml",
+        scheduler_key)
     scheduler1.registered(self._driver, self._framework_id, object())
-    scheduler1.create_cluster("cluster1", "mysql_user", 3)
+    _, password = scheduler1.create_cluster("cluster1", "mysql_user", 3)
 
     # Simulate restart before the task is successfully launched.
     scheduler2 = MysosScheduler(
@@ -138,7 +146,8 @@ class TestScheduler(unittest.TestCase):
         self._zk_client,
         self._zk_url,
         Amount(5, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml")
+        "/etc/mysos/admin_keyfile.yml",
+        scheduler_key)
 
     assert len(scheduler2._launchers) == 0  # No launchers are recovered.
 
@@ -147,6 +156,11 @@ class TestScheduler(unittest.TestCase):
 
     assert len(scheduler2._launchers) == 1
     assert scheduler2._launchers["cluster1"].cluster_name == "cluster1"
+
+    password_box = PasswordBox(scheduler_key)
+
+    assert password_box.match(
+        password, scheduler2._launchers["cluster1"]._cluster.encrypted_password)
 
     # Now offer the resources for this task.
     scheduler2.resourceOffers(self._driver, [self._offer])
@@ -169,6 +183,7 @@ class TestScheduler(unittest.TestCase):
         self._zk_url,
         Amount(5, Time.SECONDS),
         "/etc/mysos/admin_keyfile.yml",
+        gen_encryption_key(),
         framework_role='mysos')  # Require 'mysos' but the resources are in '*'.
     scheduler1.registered(self._driver, self._framework_id, object())
     scheduler1.create_cluster("cluster1", "mysql_user", 3)

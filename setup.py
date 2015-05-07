@@ -46,6 +46,7 @@ setup(
         'mako==0.4.0',
         'mesos.interface{0}'.format(MESOS_VERSION),
         'mysql-python',
+        'pynacl==0.3.0',
         'pyyaml==3.10',
         'sqlalchemy',
         'zake==0.2.1',
