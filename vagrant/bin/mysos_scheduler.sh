@@ -5,8 +5,12 @@ set -uex
 TMPDIR=$(mktemp -d)
 
 virtualenv $TMPDIR  # Create venv under /tmp.
+
+# 'protobuf' is a dependency of mesos.interface's but we install it separately because otherwise
+# 3.0.0-alpha is installed and it breaks the mesos.interface install.
+$TMPDIR/bin/pip install 'protobuf==2.6.1'
 $TMPDIR/bin/pip install --find-links /home/vagrant/mysos/deps mesos.native
-$TMPDIR/bin/pip install --pre --find-links /home/vagrant/mysos/dist mysos
+$TMPDIR/bin/pip install --pre --find-links /home/vagrant/mysos/dist mysos[scheduler]
 
 ZK_HOST=192.168.33.17
 API_PORT=55001

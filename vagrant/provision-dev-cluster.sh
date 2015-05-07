@@ -6,19 +6,15 @@
 export DEBIAN_FRONTEND=noninteractive
 aptitude update -q
 aptitude install -q -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
-    libcurl3-dev \
-    libsasl2-dev \
+    curl \  # We use curl --silent to download pakcages.
+    libcurl3-dev \  # Mesos requirement.
+    libsasl2-dev \  # Mesos requirement.
     python-dev \
     zookeeper \
     mysql-server-5.6 \
     libmysqlclient-dev \
-    libunwind8 \
     python-virtualenv \
-    bison flex  # For libnl.
-
-# Fix up a dependency issue of Mesos egg: _mesos.so links to libunwind.so.7 but Trusty only has
-# libunwind.so.8.
-ln -sf /usr/lib/x86_64-linux-gnu/libunwind.so.8 /usr/lib/x86_64-linux-gnu/libunwind.so.7
+    libffi-dev  # For pynacl.
 
 # Fix up Ubuntu mysql-server-5.6 issue: mysql_install_db looks for this file even if we don't need
 # it.
@@ -38,7 +34,6 @@ rsync -urzvh /vagrant/3rdparty/ /home/vagrant/mysos/3rdparty/ --delete
 
 # Install the upstart configurations.
 sudo cp /home/vagrant/mysos/vagrant/upstart/*.conf /etc/init
-chown -R vagrant:vagrant /home/vagrant/mysos
 EOF
 chmod +x /usr/local/bin/update-mysos
 sudo -u vagrant update-mysos
