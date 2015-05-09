@@ -21,20 +21,20 @@ socket_tmp=`mktemp -d`
 
 # Start the server in read only mode.
 mysqld \
-  --defaults-file=$conf_file \
-  --user=$framework_user \
-  --port=$port \
-  --server-id=$server_id \
-  --socket=$socket_tmp/mysql.sock \
-  --pid-file=$log_dir/mysqld.pid \
-  --basedir=$mysql_basedir \
-  --datadir=$data_dir \
-  --tmpdir=$tmp_dir \
-  --innodb_data_home_dir=$data_dir \
-  --innodb_log_group_home_dir=$log_dir \
-  --log-error=$data_dir/mysql-error.log \
-  --log-bin=$log_dir/mysql-bin \
-  --relay-log=$log_dir/mysql-relay-bin \
-  --relay-log-index=$log_dir/mysql-relay-bin.index \
-  --innodb_buffer_pool_size=$buffer_pool_size \
+  --defaults-file="${conf_file}" \
+  --user="${framework_user}" \
+  --port="${port}" \
+  --server-id="${server_id}" \
+  --socket="${socket_tmp}/mysql.sock" \
+  --pid-file="${log_dir}/mysqld.pid" \
+  --basedir="${mysql_basedir}" \
+  --datadir="${data_dir}" \
+  --tmpdir="${tmp_dir}" \
+  --innodb_data_home_dir="${data_dir}" \
+  --innodb_log_group_home_dir="${log_dir}" \
+  --log-error="${data_dir}/mysql-error.log" \
+  --log-bin="${log_dir}/mysql-bin" \
+  --relay-log="${log_dir}/mysql-relay-bin" \
+  --relay-log-index="${log_dir}/mysql-relay-bin.index" \
+  --innodb_buffer_pool_size="${buffer_pool_size}" \
   --skip-grant-tables
