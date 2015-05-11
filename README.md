@@ -73,6 +73,6 @@ The Vagrant test uses the `sdist` Mysos package in `.tox/dist` so be sure to run
     
     # Wait for the VM and Mysos API endpoint to come up (http://192.168.33.17:55001 becomes available).
     
-    ./vagrant/test.sh
+    tox -e vagrant
 
 `test.sh` verifies that Mysos successfully creates a MySQL cluster and then deletes it.

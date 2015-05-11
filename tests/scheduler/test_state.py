@@ -9,6 +9,7 @@ from mysos.scheduler.state import (
     MySQLTask,
     Scheduler
 )
+from mysos.scheduler.password import gen_encryption_key, PasswordBox
 
 from mesos.interface.mesos_pb2 import FrameworkInfo
 
@@ -44,7 +45,9 @@ class TestState(unittest.TestCase):
     assert expected.clusters == actual.clusters
 
   def test_cluster_state(self):
-    expected = MySQLCluster('cluster1', 'cluster_user', 'cluster_password', 3)
+    password_box = PasswordBox(gen_encryption_key())
+
+    expected = MySQLCluster('cluster1', 'cluster_user', password_box.encrypt('cluster_password'), 3)
 
     expected.tasks['task1'] = MySQLTask(
         'cluster1', 'task1', 'slave1', 'host1', 10000)
@@ -57,3 +60,5 @@ class TestState(unittest.TestCase):
     assert expected.num_nodes == actual.num_nodes
     assert len(expected.tasks) == len(actual.tasks)
     assert expected.tasks['task1'].port == actual.tasks['task1'].port
+    assert expected.encrypted_password == actual.encrypted_password
+    assert password_box.match('cluster_password', actual.encrypted_password)

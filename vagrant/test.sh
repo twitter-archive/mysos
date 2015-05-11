@@ -11,7 +11,7 @@ num_nodes=1
 cluster_user="mysos"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-executable=$HERE/../.tox/py27/bin/mysos_test_client
+executable=$HERE/../.tox/vagrant/bin/mysos_test_client
 
 if [ ! -f ${executable} ]; then
   echo "${executable} doesn't exist. Build it first."

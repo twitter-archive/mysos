@@ -8,6 +8,7 @@ from mysos.common import zookeeper
 
 from .elector import MySQLMasterElector
 from .state import MySQLCluster, MySQLTask, StateProvider
+from .password import PasswordBox
 
 import mesos.interface.mesos_pb2 as mesos_pb2
 from twitter.common import log
@@ -46,6 +47,7 @@ class MySQLClusterLauncher(object):
       executor_cmd,
       election_timeout,
       admin_keypath,
+      scheduler_key,
       installer_args=None,
       backup_store_args=None,
       executor_environ=None,
@@ -61,6 +63,7 @@ class MySQLClusterLauncher(object):
       :param executor_cmd: See flags.
       :param election_timeout: See flags.
       :param admin_keypath: See flags.
+      :param scheduler_key: Used for encrypting cluster passwords.
       :param installer_args: See flags.
       :param backup_store_args: See flags.
       :param executor_environ: See flags.
@@ -96,6 +99,9 @@ class MySQLClusterLauncher(object):
 
     zk_root = zookeeper.parse(zk_url)[2]
     self._cluster_manager = ClusterManager(kazoo, get_cluster_path(zk_root, cluster.name))
+
+    self._password_box = PasswordBox(scheduler_key)
+    self._password_box.decrypt(cluster.encrypted_password)  # Validate the password.
 
     self._lock = threading.Lock()
 
@@ -203,7 +209,7 @@ class MySQLClusterLauncher(object):
       cluster are killed.
     """
     with self._lock:
-      if self._cluster.password != password:
+      if not self._password_box.match(password, self._cluster.encrypted_password):
         raise self.PermissionError("No permission to kill cluster %s" % self.cluster_name)
 
       self._terminating = True
@@ -278,7 +284,7 @@ class MySQLClusterLauncher(object):
         'port': task_port,
         'cluster': self._cluster.name,
         'cluster_user': self._cluster.user,
-        'cluster_password': self._cluster.password,
+        'cluster_password': self._password_box.decrypt(self._cluster.encrypted_password),
         'server_id': server_id,  # Use the integer Task ID as the server ID.
         'zk_url': self._zk_url,
         'admin_keypath': self._admin_keypath,

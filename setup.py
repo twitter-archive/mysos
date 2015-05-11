@@ -41,14 +41,10 @@ setup(
              list_package_data_files('mysos/scheduler', 'assets'))
     },
     install_requires=[
-        'cherrypy==3.2.2',
         'kazoo==1.3.1',
         'mako==0.4.0',
         'mesos.interface{0}'.format(MESOS_VERSION),
-        'mysql-python',
         'pyyaml==3.10',
-        'sqlalchemy',
-        'zake==0.2.1',
         make_commons_requirement('app'),
         make_commons_requirement('collections'),
         make_commons_requirement('concurrent'),
@@ -60,15 +56,30 @@ setup(
         make_commons_requirement('zookeeper'),
     ],
     extras_require={
-        'test': ['webtest',],
-        'driver': ['mesos.native{0}'.format(MESOS_VERSION),],
+        'test': [
+            'pynacl>=0.3.0',
+            'webtest',
+            'zake==0.2.1',
+        ],
+        'scheduler': [
+            'cherrypy==3.2.2',
+            'mesos.native{0}'.format(MESOS_VERSION),
+            'pynacl>=0.3.0,<1',
+        ],
+        'executor': [
+            'mesos.native{0}'.format(MESOS_VERSION),
+        ],
+        'test_client': [
+            'sqlalchemy',
+            'mysql-python'
+        ]
     },
     entry_points={
         'console_scripts': [
-            'mysos_scheduler=mysos.scheduler.mysos_scheduler:proxy_main [driver]',
-            'mysos_executor=mysos.executor.mysos_executor:proxy_main [driver]',
-            'vagrant_mysos_executor=mysos.executor.testing.vagrant_mysos_executor:proxy_main [driver]',
-            'mysos_test_client=mysos.testing.mysos_test_client:proxy_main',
+            'mysos_scheduler=mysos.scheduler.mysos_scheduler:proxy_main [scheduler]',
+            'mysos_executor=mysos.executor.mysos_executor:proxy_main [executor]',
+            'vagrant_mysos_executor=mysos.executor.testing.vagrant_mysos_executor:proxy_main [executor]',
+            'mysos_test_client=mysos.testing.mysos_test_client:proxy_main [test_client]',
         ],
     },
 )

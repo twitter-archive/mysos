@@ -7,6 +7,7 @@ import threading
 from mysos.common.cluster import get_cluster_path, wait_for_master
 from mysos.common.testing import Fake
 from mysos.scheduler.launcher import create_resources, MySQLClusterLauncher
+from mysos.scheduler.password import gen_encryption_key, PasswordBox
 from mysos.scheduler.state import LocalStateProvider, MySQLCluster
 from mysos.scheduler.zk_state import ZooKeeperStateProvider
 
@@ -53,7 +54,11 @@ class TestLauncher(object):
 
     # Some tests use the default launcher; some don't.
     self._zk_url = "zk://host/mysos/test"
-    self._cluster = MySQLCluster("cluster0", "user", "pass", 3)
+
+    self._scheduler_key = gen_encryption_key()
+    self._password_box = PasswordBox(self._scheduler_key)
+
+    self._cluster = MySQLCluster("cluster0", "user", self._password_box.encrypt("pass"), 3)
 
     # Construct the state provider based on the test parameter.
     if request.param == LocalStateProvider:
@@ -74,6 +79,7 @@ class TestLauncher(object):
         "cmd.sh",
         Amount(5, Time.SECONDS),
         "/etc/mysos/admin_keyfile.yml",
+        self._scheduler_key,
         query_interval=Amount(150, Time.MILLISECONDS))  # Short interval.
 
     self._elected = threading.Event()
@@ -166,7 +172,7 @@ class TestLauncher(object):
     launchers = [
       MySQLClusterLauncher(
           self._driver,
-          MySQLCluster("cluster0", "user0", "pass0", 1),
+          MySQLCluster("cluster0", "user0", self._password_box.encrypt("pass0"), 1),
           self._state_provider,
           self._zk_url,
           self._zk_client,
@@ -174,10 +180,11 @@ class TestLauncher(object):
           "./executor.pex",
           "cmd.sh",
           Amount(5, Time.SECONDS),
-          "/etc/mysos/admin_keyfile.yml"),
+          "/etc/mysos/admin_keyfile.yml",
+          self._scheduler_key),
       MySQLClusterLauncher(
           self._driver,
-          MySQLCluster("cluster1", "user1", "pass1", 2),
+          MySQLCluster("cluster1", "user1", self._password_box.encrypt("pass1"), 2),
           self._state_provider,
           self._zk_url,
           self._zk_client,
@@ -185,7 +192,8 @@ class TestLauncher(object):
           "./executor.pex",
           "cmd.sh",
           Amount(5, Time.SECONDS),
-          "/etc/mysos/admin_keyfile.yml")]
+          "/etc/mysos/admin_keyfile.yml",
+          self._scheduler_key)]
     self._launchers.extend(launchers)
 
     resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000, 10001, 10002]))
@@ -218,7 +226,8 @@ class TestLauncher(object):
         "./executor.pex",
         "cmd.sh",
         Amount(5, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml")
+        "/etc/mysos/admin_keyfile.yml",
+        self._scheduler_key)
     self._launchers.append(launcher)
 
     resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000]))
@@ -253,7 +262,8 @@ class TestLauncher(object):
         "./executor.pex",
         "cmd.sh",
         Amount(1, Time.SECONDS),
-        "/etc/mysos/admin_keyfile.yml")
+        "/etc/mysos/admin_keyfile.yml",
+        self._scheduler_key)
     self._launchers.append(launcher)
 
     resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000]))
@@ -405,6 +415,7 @@ class TestLauncher(object):
         "cmd.sh",
         Amount(5, Time.SECONDS),
         "/etc/mysos/admin_keyfile.yml",
+        self._scheduler_key,
         query_interval=Amount(150, Time.MILLISECONDS))
 
     # Now fail the master task.
@@ -480,6 +491,7 @@ class TestLauncher(object):
         "cmd.sh",
         Amount(5, Time.SECONDS),
         "/etc/mysos/admin_keyfile.yml",
+        self._scheduler_key,
         query_interval=Amount(150, Time.MILLISECONDS))
 
     for i in range(1, self._cluster.num_nodes):
@@ -535,7 +547,8 @@ class TestLauncher(object):
     with pytest.raises(MySQLClusterLauncher.PermissionError):
       self._launcher.kill("wrong_password")
 
-    self._launcher.kill(self._cluster.password)  # Correct password.
+    # Correct password.
+    self._launcher.kill(self._password_box.decrypt(self._cluster.encrypted_password))
 
     # All 3 nodes are successfully killed.
     status = mesos_pb2.TaskStatus()
@@ -547,3 +560,37 @@ class TestLauncher(object):
 
     assert "/mysos/test/cluster0" not in self._storage.paths  # ServerSets removed.
     assert not self._state_provider.load_cluster_state("cluster0")  # State removed.
+
+  def test_launcher_recovery_corrupted_password(self):
+    # 1. Launch a single instance for a cluster on the running launcher.
+    task_id, remaining = self._launcher.launch(self._offer)
+    del self._offer.resources[:]
+    self._offer.resources.extend(remaining)
+    assert task_id == "mysos-cluster0-0"
+
+    # The task has successfully started.
+    status = mesos_pb2.TaskStatus()
+    status.state = mesos_pb2.TASK_RUNNING
+    status.slave_id.value = self._offer.slave_id.value
+    status.task_id.value = "mysos-cluster0-0"
+    self._launcher.status_update(status)
+
+    # 2. Recover the launcher.
+    self._cluster = self._state_provider.load_cluster_state(self._cluster.name)
+    self._cluster.encrypted_password = "corrupted_password"
+
+    # The corrupted password causes the launcher constructor to fail.
+    with pytest.raises(ValueError):
+      self._launcher = MySQLClusterLauncher(
+          self._driver,
+          self._cluster,
+          self._state_provider,
+          self._zk_url,
+          self._zk_client,
+          self._framework_user,
+          "./executor.pex",
+          "cmd.sh",
+          Amount(5, Time.SECONDS),
+          "/etc/mysos/admin_keyfile.yml",
+          self._scheduler_key,
+          query_interval=Amount(150, Time.MILLISECONDS))

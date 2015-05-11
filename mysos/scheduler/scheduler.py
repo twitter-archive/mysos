@@ -2,13 +2,13 @@ from collections import OrderedDict
 import posixpath
 import random
 import threading
-import string
 import sys
 
 from mysos.common.cluster import get_cluster_path
 from mysos.common.decorators import logged
 
 from .launcher import MySQLClusterLauncher
+from .password import gen_password, PasswordBox
 from .state import MySQLCluster, Scheduler, StateProvider
 
 import mesos.interface
@@ -44,6 +44,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       zk_url,
       election_timeout,
       admin_keypath,
+      scheduler_key,
       installer_args=None,
       backup_store_args=None,
       executor_environ=None,
@@ -58,6 +59,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       :param framework_role: See flags.
       :param election_timeout: See flags.
       :param admin_keypath: See flags.
+      :param scheduler_key: Scheduler uses it to encrypt cluster passwords.
       :param installer_args: See flags.
       :param backup_store_args: See flags.
       :param executor_environ: See flags.
@@ -90,6 +92,9 @@ class MysosScheduler(mesos.interface.Scheduler):
     # Use a subdir to avoid name collision with the state storage.
     self._discover_zk_url = posixpath.join(zk_url, "discover")
     self._kazoo = kazoo
+
+    self._scheduler_key = scheduler_key
+    self._password_box = PasswordBox(scheduler_key)
 
     self._tasks = {}  # {Task ID: cluster name} mappings.
     self._launchers = OrderedDict()  # Order-preserving {cluster name : MySQLClusterLauncher}
@@ -137,10 +142,12 @@ class MysosScheduler(mesos.interface.Scheduler):
       self._state.clusters.add(cluster_name)
       self._state_provider.dump_scheduler_state(self._state)
 
+      # Return the plaintext version to the client but store the encrypted version.
+      password = gen_password()
       cluster = MySQLCluster(
           cluster_name,
           cluster_user,
-          gen_password(),
+          self._password_box.encrypt(password),
           int(num_nodes),
           backup_id=backup_id)
       self._state_provider.dump_cluster_state(cluster)
@@ -157,12 +164,13 @@ class MysosScheduler(mesos.interface.Scheduler):
           self._executor_cmd,
           self._election_timeout,
           self._admin_keypath,
+          self._scheduler_key,
           installer_args=self._installer_args,
           backup_store_args=self._backup_store_args,
           executor_environ=self._executor_environ,
           framework_role=self._framework_role)
 
-      return get_cluster_path(self._discover_zk_url, cluster_name), cluster.password
+      return get_cluster_path(self._discover_zk_url, cluster_name), password
 
   def delete_cluster(self, cluster_name, password):
     """
@@ -215,7 +223,7 @@ class MysosScheduler(mesos.interface.Scheduler):
     # connected.
     try:
       self._recover()
-    except self.Error as e:
+    except Exception as e:
       log.error("Stopping scheduler because: %s" % e)
       self._stop()
       return
@@ -230,38 +238,39 @@ class MysosScheduler(mesos.interface.Scheduler):
     for cluster_name in OrderedSet(self._state.clusters):  # Make a copy so we can remove dead
                                                            # entries while iterating the copy.
       log.info("Recovering launcher for cluster %s" % cluster_name)
-      try:
-        cluster = self._state_provider.load_cluster_state(cluster_name)
-        if not cluster:
-          # The scheduler could have failed over before creating the launcher. The user request
-          # should have failed and there is no cluster state to restore.
-          log.info("Skipping cluster %s because its state cannot be found" % cluster_name)
-          self._state.clusters.remove(cluster_name)
-          self._state_provider.dump_scheduler_state(self._state)
-          continue
-        for task_id in cluster.tasks:
-          self._tasks[task_id] = cluster.name  # Reconstruct the 'tasks' map.
-        # Order of launchers is preserved thanks to the OrderedSet.
-        # For recovered launchers we use the currently specified --framework_role and
-        # --executor_environ, etc., instead of saving it in cluster state so the change in flags can
-        # be picked up by existing clusters.
-        self._launchers[cluster.name] = MySQLClusterLauncher(
-            self._driver,
-            cluster,
-            self._state_provider,
-            self._discover_zk_url,
-            self._kazoo,
-            self._framework_user,
-            self._executor_uri,
-            self._executor_cmd,
-            self._election_timeout,
-            self._admin_keypath,
-            self._installer_args,
-            self._backup_store_args,
-            self._executor_environ,
-            self._framework_role)
-      except StateProvider.Error as e:
-        raise self.Error("Failed to recover cluster: %s" % e.message)
+
+      cluster = self._state_provider.load_cluster_state(cluster_name)
+      if not cluster:
+        # The scheduler could have failed over before creating the launcher. The user request
+        # should have failed and there is no cluster state to restore.
+        log.info("Skipping cluster %s because its state cannot be found" % cluster_name)
+        self._state.clusters.remove(cluster_name)
+        self._state_provider.dump_scheduler_state(self._state)
+        continue
+
+      for task_id in cluster.tasks:
+        self._tasks[task_id] = cluster.name  # Reconstruct the 'tasks' map.
+
+      # Order of launchers is preserved thanks to the OrderedSet.
+      # For recovered launchers we use the currently specified --framework_role and
+      # --executor_environ, etc., instead of saving it in cluster state so the change in flags can
+      # be picked up by existing clusters.
+      self._launchers[cluster.name] = MySQLClusterLauncher(
+          self._driver,
+          cluster,
+          self._state_provider,
+          self._discover_zk_url,
+          self._kazoo,
+          self._framework_user,
+          self._executor_uri,
+          self._executor_cmd,
+          self._election_timeout,
+          self._admin_keypath,
+          self._scheduler_key,
+          self._installer_args,
+          self._backup_store_args,
+          self._executor_environ,
+          self._framework_role)
 
     log.info("Recovered %s clusters" % len(self._launchers))
 
@@ -371,11 +380,3 @@ def shuffled(li):
   copy = li[:]
   random.shuffle(copy)
   return copy
-
-
-def gen_password():
-  """Return a randomly-generated password of 21 characters."""
-  return ''.join(random.choice(
-      string.ascii_uppercase +
-      string.ascii_lowercase +
-      string.digits) for _ in range(21))
