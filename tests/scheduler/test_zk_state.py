@@ -2,6 +2,7 @@ import cPickle
 import os
 import unittest
 
+from mysos.scheduler.scheduler import DEFAULT_TASK_CPUS, DEFAULT_TASK_MEM, DEFAULT_TASK_DISK
 from mysos.scheduler.state import (
     MySQLCluster,
     MySQLTask,
@@ -58,7 +59,14 @@ class TestZooKeeperStateProvider(unittest.TestCase):
       self._state_provider.load_scheduler_state()
 
   def test_cluster_state(self):
-    expected = MySQLCluster('cluster1', 'cluster_user', 'cluster_password', 3)
+    expected = MySQLCluster(
+        'cluster1',
+        'cluster_user',
+        'cluster_password',
+        3,
+        DEFAULT_TASK_CPUS,
+        DEFAULT_TASK_MEM,
+        DEFAULT_TASK_DISK)
 
     expected.tasks['task1'] = MySQLTask(
         'cluster1', 'task1', 'slave1', 'host1', 10000)

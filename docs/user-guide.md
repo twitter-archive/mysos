@@ -14,10 +14,13 @@ The root of API endpoint is a web page that lists the managed MySQL clusters.
 
 
 ### Parameters
-- `cluster_name`: Name of the cluster.
-- `cluster_user`: The user account for all MySQL instances in the cluster which as full admin
+- `cluster_name`: Required. Name of the cluster.
+- `cluster_user`: Required. The user account for all MySQL instances in the cluster which as full admin
 privileges.
-- `num_nodes`: Number of nodes in the cluster. [default: 3]
+- `num_nodes`: Number of nodes in the cluster. [default: 1]
+- `size`: The size of instances in the cluster as a JSON dictionary of `cpus`, `mem` and `disk`.
+`mem` and `disk` are specified with standard data size units such as `mb`, `gb`, `tb`, etc. (no
+spaces, see the default for an example) [default: `{"mem": "512mb", "disk": "2gb", "cpus": 1.0}`]
 - `backup_id`: An ID for the MySQL backup to restore from when the MySQL instance starts. If not
 specified, Mysos will start an empty MySQL instance. The format and meaning of `backup_id` is
 specific to the implementation of `BackupStore` that the Mysos cluster uses.
@@ -34,12 +37,15 @@ See the *Service Discovery* section below.
 
 
 ### Example
-```
-# Create a cluster named 'test_cluster3' and restore from the backup 'foo/bar:201503122000'.
-curl -X POST 192.168.33.7/clusters/test_cluster3 --form "cluster_user=mysos" --form "num_nodes=2" --form "num_nodes=2" --form "backup_id=foo/bar:201503122000"
-# Response
-{"cluster_password": "w9gMCkecsMh6sWsRdxNTa", "cluster_url": "zk://mysos:mysos@192.168.33.7:2181/mysos/discover/test_cluster3"}
-```
+
+    # Create a cluster named 'test_cluster3' and restore from the backup 'foo/bar:201503122000'.
+    curl -X POST 192.168.33.7/clusters/test_cluster3 --form "cluster_user=mysos" \
+      --form "num_nodes=2" --form "backup_id=foo/bar:201503122000" \
+      --form 'size={"mem": "512mb", "disk": "3gb", "cpus": 1.0}'
+      
+    # Response
+    {"cluster_password": "w9gMCkecsMh6sWsRdxNTa", "cluster_url": "zk://192.168.33.7:2181/mysos/discover/test_cluster3"}
+
 
 ### Notes
 - Cluster creation is asynchronous. The API call returns (with status 200) as soon as the Mysos

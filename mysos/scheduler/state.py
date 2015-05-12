@@ -85,7 +85,7 @@ class MySQLCluster(object):
     It includes tasks (MySQLTask) for members of the cluster.
   """
 
-  def __init__(self, name, user, encrypted_password, num_nodes, backup_id=None):
+  def __init__(self, name, user, encrypted_password, num_nodes, cpus, mem, disk, backup_id=None):
     if not isinstance(num_nodes, int):
       raise TypeError("'num_nodes' should be an int")
 
@@ -93,6 +93,9 @@ class MySQLCluster(object):
     self.user = user
     self.encrypted_password = encrypted_password
     self.num_nodes = num_nodes
+    self.cpus = cpus
+    self.mem = mem
+    self.disk = disk
     self.backup_id = backup_id
 
     self.members = {}  # {TaskID : MemberID} mappings. MemberIDs are assigned by ZooKeeper. A task

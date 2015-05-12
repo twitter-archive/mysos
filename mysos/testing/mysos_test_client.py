@@ -63,6 +63,12 @@ def proxy_main():
       '--cluster_user',
       dest='cluster_user',
       help='MySQL user name the of cluster')
+  @app.command_option(
+      '--size',
+      dest='size',
+      help="The size of instances in the cluster as a JSON dictionary of 'cpus', 'mem', 'disk'. "
+           "'mem' and 'disk' are specified with data size units: kb, mb, gb, etc. If given 'None'"
+           "then app defaults are used.")
   def create(args, options):
     validate_common_options(options)
 
@@ -76,6 +82,7 @@ def proxy_main():
     values = dict(
         num_nodes=int(options.num_nodes),
         cluster_user=options.cluster_user,
+        size=options.size if options.size else '',
         backup_id=options.backup_id if options.backup_id else '')
 
     req = urllib2.Request(url, urllib.urlencode(values))
