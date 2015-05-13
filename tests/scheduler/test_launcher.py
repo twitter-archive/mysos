@@ -8,6 +8,7 @@ from mysos.common.cluster import get_cluster_path, wait_for_master
 from mysos.common.testing import Fake
 from mysos.scheduler.launcher import create_resources, MySQLClusterLauncher
 from mysos.scheduler.password import gen_encryption_key, PasswordBox
+from mysos.scheduler.scheduler import DEFAULT_TASK_CPUS, DEFAULT_TASK_MEM, DEFAULT_TASK_DISK
 from mysos.scheduler.state import LocalStateProvider, MySQLCluster
 from mysos.scheduler.zk_state import ZooKeeperStateProvider
 
@@ -15,7 +16,7 @@ from kazoo.handlers.threading import SequentialThreadingHandler
 import mesos.interface.mesos_pb2 as mesos_pb2
 from twitter.common import log
 from twitter.common.concurrent import deadline
-from twitter.common.quantity import Amount, Time
+from twitter.common.quantity import Amount, Data, Time
 from zake.fake_client import FakeClient
 from zake.fake_storage import FakeStorage
 
@@ -46,8 +47,12 @@ class TestLauncher(object):
     self._offer.slave_id.value = "slave_id_0"
     self._offer.hostname = "localhost"
 
-    # Enough memory and ports to fit three tasks.
-    resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000, 10001, 10002]))
+    # Enough resources to fit three tasks.
+    resources = create_resources(
+        cpus=DEFAULT_TASK_CPUS * 3,
+        mem=DEFAULT_TASK_MEM * 3,
+        disk=DEFAULT_TASK_DISK * 3,
+        ports=set([10000, 10001, 10002]))
     self._offer.resources.extend(resources)
 
     self._framework_user = "framework_user"
@@ -58,7 +63,14 @@ class TestLauncher(object):
     self._scheduler_key = gen_encryption_key()
     self._password_box = PasswordBox(self._scheduler_key)
 
-    self._cluster = MySQLCluster("cluster0", "user", self._password_box.encrypt("pass"), 3)
+    self._cluster = MySQLCluster(
+        "cluster0",
+        "user",
+        self._password_box.encrypt("pass"),
+        3,
+        DEFAULT_TASK_CPUS,
+        DEFAULT_TASK_MEM,
+        DEFAULT_TASK_DISK)
 
     # Construct the state provider based on the test parameter.
     if request.param == LocalStateProvider:
@@ -130,7 +142,11 @@ class TestLauncher(object):
   def test_launch_cluster_insufficient_resources(self):
     """All but one slave in the slave are launched successfully."""
     del self._offer.resources[:]
-    resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000, 10001]))
+    resources = create_resources(
+        cpus=DEFAULT_TASK_CPUS * 3,
+        mem=DEFAULT_TASK_MEM * 3,
+        disk=DEFAULT_TASK_DISK * 3 - Amount(1, Data.MB),  # 1mb less than required disk space.
+        ports=set([10000, 10001, 10002]))
     self._offer.resources.extend(resources)
 
     # There is one fewer port than required to launch the entire cluster.
@@ -172,7 +188,14 @@ class TestLauncher(object):
     launchers = [
       MySQLClusterLauncher(
           self._driver,
-          MySQLCluster("cluster0", "user0", self._password_box.encrypt("pass0"), 1),
+          MySQLCluster(
+              "cluster0",
+              "user0",
+              self._password_box.encrypt("pass0"),
+              1,
+              DEFAULT_TASK_CPUS,
+              DEFAULT_TASK_MEM,
+              DEFAULT_TASK_DISK),
           self._state_provider,
           self._zk_url,
           self._zk_client,
@@ -184,7 +207,14 @@ class TestLauncher(object):
           self._scheduler_key),
       MySQLClusterLauncher(
           self._driver,
-          MySQLCluster("cluster1", "user1", self._password_box.encrypt("pass1"), 2),
+          MySQLCluster(
+              "cluster1",
+              "user1",
+              self._password_box.encrypt("pass1"),
+              2,
+              DEFAULT_TASK_CPUS,
+              DEFAULT_TASK_MEM,
+              DEFAULT_TASK_DISK),
           self._state_provider,
           self._zk_url,
           self._zk_client,
@@ -196,7 +226,11 @@ class TestLauncher(object):
           self._scheduler_key)]
     self._launchers.extend(launchers)
 
-    resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000, 10001, 10002]))
+    resources = create_resources(
+        cpus=DEFAULT_TASK_CPUS * 3,
+        mem=DEFAULT_TASK_MEM * 3,
+        disk=DEFAULT_TASK_DISK * 3,
+        ports=set([10000, 10001, 10002]))
     self._offer.resources.extend(resources)
 
     # Three nodes in total across two clusters.
@@ -230,7 +264,11 @@ class TestLauncher(object):
         self._scheduler_key)
     self._launchers.append(launcher)
 
-    resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000]))
+    resources = create_resources(
+        cpus=DEFAULT_TASK_CPUS,
+        mem=DEFAULT_TASK_MEM,
+        disk=DEFAULT_TASK_DISK,
+        ports=set([10000]))
     self._offer.resources.extend(resources)
 
     task_id, _ = launcher.launch(self._offer)
@@ -266,7 +304,11 @@ class TestLauncher(object):
         self._scheduler_key)
     self._launchers.append(launcher)
 
-    resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000]))
+    resources = create_resources(
+        cpus=DEFAULT_TASK_CPUS,
+        mem=DEFAULT_TASK_MEM,
+        disk=DEFAULT_TASK_DISK,
+        ports=set([10000]))
     self._offer.resources.extend(resources)
 
     task_id, _ = launcher.launch(self._offer)
@@ -358,7 +400,11 @@ class TestLauncher(object):
 
     # When a new offer comes in, a new task is launched.
     del self._offer.resources[:]
-    resources = create_resources(cpus=1, mem=512, ports=set([10000]))
+    resources = create_resources(
+        cpus=DEFAULT_TASK_CPUS,
+        mem=DEFAULT_TASK_MEM,
+        disk=DEFAULT_TASK_DISK,
+        ports=set([10000]))
     self._offer.resources.extend(resources)
     task_id, _ = self._launcher.launch(self._offer)
     assert task_id == "mysos-cluster0-3"

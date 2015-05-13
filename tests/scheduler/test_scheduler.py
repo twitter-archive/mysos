@@ -6,6 +6,9 @@ import unittest
 
 from mysos.common.testing import Fake
 from mysos.scheduler.scheduler import (
+    DEFAULT_TASK_CPUS,
+    DEFAULT_TASK_DISK,
+    DEFAULT_TASK_MEM,
     INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION,
     MysosScheduler)
 from mysos.scheduler.launcher import create_resources
@@ -48,13 +51,18 @@ class TestScheduler(unittest.TestCase):
     self._offer.slave_id.value = "slave_id_0"
     self._offer.hostname = "localhost"
 
-    resources = create_resources(cpus=4, mem=512 * 3, ports=set([10000, 10001, 10002]))
+    resources = create_resources(
+        cpus=DEFAULT_TASK_CPUS * 3,
+        mem=DEFAULT_TASK_MEM * 3,
+        disk=DEFAULT_TASK_DISK * 3,
+        ports=set([10000, 10001, 10002]))
     self._offer.resources.extend(resources)
 
     self._framework_user = "framework_user"
 
     self._zk_url = "zk://host/mysos/test"
-    self._cluster = MySQLCluster("cluster0", "user", "pass", 3)
+    self._cluster = MySQLCluster(
+        "cluster0", "user", "pass", 3, DEFAULT_TASK_CPUS, DEFAULT_TASK_MEM, DEFAULT_TASK_DISK)
 
     self._tmpdir = tempfile.mkdtemp()
     self._state_provider = LocalStateProvider(self._tmpdir)

@@ -1,4 +1,5 @@
 from collections import OrderedDict
+import json
 import posixpath
 import random
 import threading
@@ -15,8 +16,13 @@ import mesos.interface
 import mesos.interface.mesos_pb2 as mesos_pb2
 from twitter.common import log
 from twitter.common.collections.orderedset import OrderedSet
-from twitter.common.quantity import Amount, Time
+from twitter.common.quantity import Amount, Data, Time
+from twitter.common.quantity.parse_simple import InvalidData, parse_data
 
+
+DEFAULT_TASK_CPUS = 1.0
+DEFAULT_TASK_DISK = Amount(2, Data.GB)
+DEFAULT_TASK_MEM = Amount(512, Data.MB)
 
 # Refuse the offer for "eternity".
 # NOTE: Using sys.maxint / 2 because sys.maxint causes rounding and precision loss when converted to
@@ -106,11 +112,14 @@ class MysosScheduler(mesos.interface.Scheduler):
                                         # Mesos. The scheduler tolerates later disconnections.
 
   # --- Public interface. ---
-  def create_cluster(self, cluster_name, cluster_user, num_nodes, backup_id=None):
+  def create_cluster(self, cluster_name, cluster_user, num_nodes, size=None, backup_id=None):
     """
       :param cluster_name: Name of the cluster.
       :param cluster_user: The user account on MySQL server.
       :param num_nodes: Number of nodes in the cluster.
+      :param size: The size of instances in the cluster as a JSON dictionary of 'cpus', 'mem',
+                   'disk'. 'mem' and 'disk' are specified with data size units: kb, mb, gb, etc. If
+                   given 'None' then app defaults are used.
       :param backup_id: The 'backup_id' of the backup to restore from. If None then Mysos starts an
                         empty instance.
 
@@ -139,6 +148,9 @@ class MysosScheduler(mesos.interface.Scheduler):
       if int(num_nodes) <= 0:
         raise ValueError("Invalid number of cluster nodes: %s" % num_nodes)
 
+      resources = parse_size(size)
+      log.info("Requested resources per instance for cluster %s: %s" % (resources, cluster_name))
+
       self._state.clusters.add(cluster_name)
       self._state_provider.dump_scheduler_state(self._state)
 
@@ -149,6 +161,9 @@ class MysosScheduler(mesos.interface.Scheduler):
           cluster_user,
           self._password_box.encrypt(password),
           int(num_nodes),
+          cpus=resources['cpus'],
+          mem=resources['mem'],
+          disk=resources['disk'],
           backup_id=backup_id)
       self._state_provider.dump_cluster_state(cluster)
 
@@ -380,3 +395,22 @@ def shuffled(li):
   copy = li[:]
   random.shuffle(copy)
   return copy
+
+
+def parse_size(size):
+  """Return the resources specified in 'size' as a dictionary."""
+  if not size:
+    resources = dict(cpus=DEFAULT_TASK_CPUS, mem=DEFAULT_TASK_MEM, disk=DEFAULT_TASK_DISK)
+  else:
+    # TODO(jyx): Simplify this using T-shirt sizing
+    # (https://github.com/twitter/mysos/issues/14).
+    try:
+      resources_ = json.loads(size)
+      resources = dict(
+        cpus=resources_['cpus'],
+        mem=parse_data(resources_['mem']),
+        disk=parse_data(resources_['disk']))
+    except (TypeError, KeyError, ValueError, InvalidData):
+      raise ValueError("'size' should be a JSON dictionary with keys 'cpus', 'mem' and 'disk'")
+
+  return resources

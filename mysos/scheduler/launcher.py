@@ -12,13 +12,8 @@ from .password import PasswordBox
 
 import mesos.interface.mesos_pb2 as mesos_pb2
 from twitter.common import log
-from twitter.common.quantity import Amount, Time
+from twitter.common.quantity import Amount, Data, Time
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
-
-
-# TODO(jyx): Replace this when we start taking tasks from an HTTP API.
-TASK_CPUS = 1
-TASK_MEM = 512
 
 
 class MySQLClusterLauncher(object):
@@ -160,13 +155,13 @@ class MySQLClusterLauncher(object):
       if self._terminating:
         return None, offer.resources
 
-      cpus, mem, ports = self._get_resources(offer.resources)
+      cpus, mem, disk, ports = self._get_resources(offer.resources)
 
-      # TODO(jyx): Replace the static resource requirements with what the user requests.
-      task_cpus = TASK_CPUS
-      task_mem = TASK_MEM
+      task_cpus = self._cluster.cpus
+      task_mem = self._cluster.mem
+      task_disk = self._cluster.disk
 
-      if cpus < task_cpus or mem < task_mem or len(ports) == 0:
+      if cpus < task_cpus or mem < task_mem or disk < task_disk or len(ports) == 0:
         # Offer doesn't fit.
         return None, offer.resources
 
@@ -175,7 +170,7 @@ class MySQLClusterLauncher(object):
 
       task_port = random.choice(list(ports))  # Randomly pick a port in the offer.
 
-      task_info = self._new_task(offer, task_cpus, task_mem, task_port)
+      task_info = self._new_task(offer, task_cpus, task_mem, task_disk, task_port)
       self._cluster.tasks[task_info.task_id.value] = MySQLTask(
           self._cluster.name,
           task_info.task_id.value,
@@ -198,7 +193,11 @@ class MySQLClusterLauncher(object):
 
       # Update the offer's resources and return them for other clusters to use.
       remaining = create_resources(
-          cpus - task_cpus, mem - task_mem, ports - set([task_port]), role=self._framework_role)
+          cpus - task_cpus,
+          mem - task_mem,
+          disk - task_disk,
+          ports - set([task_port]),
+          role=self._framework_role)
       return task_info.task_id.value, remaining
 
   def kill(self, password):
@@ -225,8 +224,8 @@ class MySQLClusterLauncher(object):
     return self._terminating and len(self._cluster.active_tasks) == 0
 
   def _get_resources(self, resources):
-    """Return a tuple of the resources: cpus, mem, set of ports."""
-    cpus, mem, ports = 0.0, 0, set()
+    """Return a tuple of the resources: cpus, mem, disk, set of ports."""
+    cpus, mem, disk, ports = 0.0, Amount(0, Data.MB), Amount(0, Data.MB), set()
     for resource in resources:
       # We do the following check:
       # 1. We only care about the role of the resources we are going to use.
@@ -237,21 +236,26 @@ class MySQLClusterLauncher(object):
       #    cases where Mysos tasks run side-by-side with tasks from other frameworks. This also
       #    simplifies the launcher's role filtering logic.
       #    TODO(jyx): Revisit this when the above assumption changes.
-      if resource.name in ('cpus', 'mem', 'ports') and resource.role != self._framework_role:
+      if (resource.name in ('cpus', 'mem', 'disk', 'ports') and
+          resource.role != self._framework_role):
         raise self.IncompatibleRoleError("Offered resource %s has role %s, expecting %s" % (
             resource.name, resource.role, self._framework_role))
 
       if resource.name == 'cpus':
         cpus = resource.scalar.value
       elif resource.name == 'mem':
-        mem = resource.scalar.value
+        # 'Amount' requires an integer while 'value' is double. We convert it bytes to minimize
+        # precision loss.
+        mem = Amount(int(resource.scalar.value * 1024 * 1024), Data.BYTES)
+      elif resource.name == 'disk':
+        disk = Amount(int(resource.scalar.value * 1024 * 1024), Data.BYTES)
       elif resource.name == 'ports' and resource.ranges.range:
         for r in resource.ranges.range:
           ports |= set(range(r.begin, r.end + 1))
 
-    return cpus, mem, ports
+    return cpus, mem, disk, ports
 
-  def _new_task(self, offer, task_cpus, task_mem, task_port):
+  def _new_task(self, offer, task_cpus, task_mem, task_disk, task_port):
     """Return a new task with the requested resources."""
     server_id = self._cluster.next_id
     task_id = "mysos-" + self.cluster_name + "-" + str(server_id)
@@ -294,7 +298,7 @@ class MySQLClusterLauncher(object):
     })
 
     resources = create_resources(
-        task_cpus, task_mem, set([task_port]), role=self._framework_role)
+        task_cpus, task_mem, task_disk, set([task_port]), role=self._framework_role)
     task.resources.extend(resources)
 
     return task
@@ -510,7 +514,7 @@ class MySQLClusterLauncher(object):
 
 
 # --- Utility methods. ---
-def create_resources(cpus, mem, ports, role='*'):
+def create_resources(cpus, mem, disk, ports, role='*'):
   """Return a list of 'Resource' protobuf for the provided resources."""
   cpus_resources = mesos_pb2.Resource()
   cpus_resources.name = 'cpus'
@@ -522,7 +526,13 @@ def create_resources(cpus, mem, ports, role='*'):
   mem_resources.name = 'mem'
   mem_resources.type = mesos_pb2.Value.SCALAR
   mem_resources.role = role
-  mem_resources.scalar.value = mem
+  mem_resources.scalar.value = mem.as_(Data.MB)
+
+  disk_resources = mesos_pb2.Resource()
+  disk_resources.name = 'disk'
+  disk_resources.type = mesos_pb2.Value.SCALAR
+  disk_resources.role = role
+  disk_resources.scalar.value = disk.as_(Data.MB)
 
   ports_resources = mesos_pb2.Resource()
   ports_resources.name = 'ports'
@@ -533,7 +543,7 @@ def create_resources(cpus, mem, ports, role='*'):
     port_range.begin = port
     port_range.end = port
 
-  return [cpus_resources, mem_resources, ports_resources]
+  return [cpus_resources, mem_resources, disk_resources, ports_resources]
 
 
 def is_terminal(state):

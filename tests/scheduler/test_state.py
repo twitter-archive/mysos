@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import unittest
 
+from mysos.scheduler.scheduler import DEFAULT_TASK_CPUS, DEFAULT_TASK_MEM, DEFAULT_TASK_DISK
 from mysos.scheduler.state import (
     LocalStateProvider,
     MySQLCluster,
@@ -47,7 +48,14 @@ class TestState(unittest.TestCase):
   def test_cluster_state(self):
     password_box = PasswordBox(gen_encryption_key())
 
-    expected = MySQLCluster('cluster1', 'cluster_user', password_box.encrypt('cluster_password'), 3)
+    expected = MySQLCluster(
+        'cluster1',
+        'cluster_user',
+        password_box.encrypt('cluster_password'),
+        3,
+        DEFAULT_TASK_CPUS,
+        DEFAULT_TASK_MEM,
+        DEFAULT_TASK_DISK)
 
     expected.tasks['task1'] = MySQLTask(
         'cluster1', 'task1', 'slave1', 'host1', 10000)

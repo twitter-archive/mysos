@@ -23,7 +23,8 @@ ${executable} create \
   --api_port=${port} \
   --cluster_user=${cluster_user} \
   --cluster=${cluster_name} \
-  --num_nodes=${num_nodes}
+  --num_nodes=${num_nodes} \
+  --size='{"mem": "512mb", "disk": "3gb", "cpus": 1.0}'
 
 echo "Finished creating the cluster, now deleting it"
 
