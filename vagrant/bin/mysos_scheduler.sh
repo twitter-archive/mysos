@@ -29,4 +29,5 @@ $TMPDIR/bin/mysos_scheduler \
     --framework_role=mysos \
     --framework_authentication_file=/home/vagrant/mysos/vagrant/etc/fw_auth_keyfile.yml \
     --scheduler_keypath=/home/vagrant/mysos/vagrant/etc/scheduler_keyfile.txt \
+    --executor_source_prefix='vagrant.devcluster' \
     --executor_environ='[{"name": "MYSOS_DEFAULTS_FILE", "value": "/etc/mysql/conf.d/my5.6.cnf"}]'

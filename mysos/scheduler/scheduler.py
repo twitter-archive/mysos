@@ -55,6 +55,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       installer_args=None,
       backup_store_args=None,
       executor_environ=None,
+      executor_source_prefix=None,
       framework_role='*'):
     """
       :param state: The Scheduler object.
@@ -70,6 +71,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       :param installer_args: See flags.
       :param backup_store_args: See flags.
       :param executor_environ: See flags.
+      :param executor_source_prefix: See flags.
       :param kazoo: The Kazoo client for communicating MySQL cluster information between the
                     scheduler and the executors.
       :param zk_url: ZooKeeper URL for used by the scheduler and the executors to access ZooKeeper.
@@ -93,6 +95,7 @@ class MysosScheduler(mesos.interface.Scheduler):
     self._installer_args = installer_args
     self._backup_store_args = backup_store_args
     self._executor_environ = executor_environ
+    self._executor_source_prefix = executor_source_prefix
 
     self._driver = None  # Will be set by registered().
 
@@ -184,6 +187,7 @@ class MysosScheduler(mesos.interface.Scheduler):
           installer_args=self._installer_args,
           backup_store_args=self._backup_store_args,
           executor_environ=self._executor_environ,
+          executor_source_prefix=self._executor_source_prefix,
           framework_role=self._framework_role)
 
       return get_cluster_path(self._discover_zk_url, cluster_name), password
@@ -284,10 +288,11 @@ class MysosScheduler(mesos.interface.Scheduler):
           self._election_timeout,
           self._admin_keypath,
           self._scheduler_key,
-          self._installer_args,
-          self._backup_store_args,
-          self._executor_environ,
-          self._framework_role)
+          installer_args=self._installer_args,
+          backup_store_args=self._backup_store_args,
+          executor_environ=self._executor_environ,
+          executor_source_prefix=self._executor_source_prefix,
+          framework_role=self._framework_role)
 
     log.info("Recovered %s clusters" % len(self._launchers))
 
