@@ -3,6 +3,7 @@ import json
 import posixpath
 import random
 import threading
+import traceback
 import sys
 
 from mysos.common.cluster import get_cluster_path
@@ -240,6 +241,7 @@ class MysosScheduler(mesos.interface.Scheduler):
       self._recover()
     except Exception as e:
       log.error("Stopping scheduler because: %s" % e)
+      log.error(traceback.format_exc())
       self._stop()
       return
 
