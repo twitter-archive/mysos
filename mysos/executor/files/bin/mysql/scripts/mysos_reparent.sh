@@ -3,7 +3,7 @@
 # Reparent the slave to a new master.
 #
 
-set -uxe
+set -ue  # No -x due to passwords in the commands.
 
 master_host=$1
 master_port=$2
