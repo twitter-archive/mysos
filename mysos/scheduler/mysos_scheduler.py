@@ -159,6 +159,17 @@ def proxy_main():
            "option is not provided"
   )
 
+  app.add_option(
+      '--executor_source_prefix',
+      dest='executor_source_prefix',
+      default=None,
+      help="Mysos uses the 'source' field in ExecutorInfo (See Mesos documentation) to group tasks "
+           "to support metrics tracking by external utilities. The format of ExecutorInfo.source "
+           "is '<prefix>.<cluster_name>.<server_id>'. This flag specifies the prefix to use in the "
+           "'source' field. e.g., it can be '<availability_zone>.<mesos_cluster>'. There is no "
+           "preceding period if <prefix> is empty"
+  )
+
   def main(args, options):
     log.info("Options in use: %s", options)
 
@@ -273,6 +284,7 @@ def proxy_main():
         installer_args=options.installer_args,
         backup_store_args=options.backup_store_args,
         executor_environ=options.executor_environ,
+        executor_source_prefix=options.executor_source_prefix,
         framework_role=options.framework_role)
 
     if fw_principal and fw_secret:

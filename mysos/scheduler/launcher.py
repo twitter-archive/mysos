@@ -16,6 +16,9 @@ from twitter.common.quantity import Amount, Data, Time
 from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstance
 
 
+EXECUTOR_NAME = 'mysos.executor'
+
+
 class MySQLClusterLauncher(object):
   """
     Responsible for launching and maintaining a MySQL cluster.
@@ -46,6 +49,7 @@ class MySQLClusterLauncher(object):
       installer_args=None,
       backup_store_args=None,
       executor_environ=None,
+      executor_source_prefix=None,
       framework_role='*',
       query_interval=Amount(1, Time.SECONDS)):
     """
@@ -62,6 +66,7 @@ class MySQLClusterLauncher(object):
       :param installer_args: See flags.
       :param backup_store_args: See flags.
       :param executor_environ: See flags.
+      :param executor_source_prefix: See flags.
       :param framework_role: See flags.
       :param query_interval: See MySQLMasterElector. Use the default value for production and allow
                              tests to use a different value.
@@ -88,6 +93,7 @@ class MySQLClusterLauncher(object):
     self._installer_args = installer_args
     self._backup_store_args = backup_store_args
     self._executor_environ = executor_environ
+    self._executor_source_prefix = executor_source_prefix
 
     # Used by the elector.
     self._query_interval = query_interval
@@ -266,6 +272,13 @@ class MySQLClusterLauncher(object):
     task.name = task_id
 
     task.executor.executor_id.value = task_id  # Use task_id as executor_id.
+    task.executor.name = EXECUTOR_NAME
+
+    source = [self._cluster.name, str(server_id)]
+    if self._executor_source_prefix and self._executor_source_prefix.strip('.'):
+      source = [self._executor_source_prefix.strip('.')] + source
+
+    task.executor.source = '.'.join(source)
     task.executor.command.value = self._executor_cmd
 
     if self._executor_environ:  # Could be 'None' since it's an optional argument.
