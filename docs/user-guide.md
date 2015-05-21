@@ -15,8 +15,8 @@ The root of API endpoint is a web page that lists the managed MySQL clusters.
 
 ### Parameters
 - `cluster_name`: Required. Name of the cluster.
-- `cluster_user`: Required. The user account for all MySQL instances in the cluster which as full admin
-privileges.
+- `cluster_user`: Required. The user account for all MySQL instances in the cluster which as full
+admin privileges.
 - `num_nodes`: Number of nodes in the cluster. [default: 1]
 - `size`: The size of instances in the cluster as a JSON dictionary of `cpus`, `mem` and `disk`.
 `mem` and `disk` are specified with standard data size units such as `mb`, `gb`, `tb`, etc. (no
@@ -24,6 +24,9 @@ spaces, see the default for an example) [default: `{"mem": "512mb", "disk": "2gb
 - `backup_id`: An ID for the MySQL backup to restore from when the MySQL instance starts. If not
 specified, Mysos will start an empty MySQL instance. The format and meaning of `backup_id` is
 specific to the implementation of `BackupStore` that the Mysos cluster uses.
+- `cluster_password`: The password used for accessing MySQL instances in the cluster as well as
+deleting the cluster from Mysos. If unspecified then Mysos generates one for the cluster. In either
+case the password is sent back as part of the response.
 
 `cluster_name` is part of the path and the rest of the parameters are specified as form fields.
 
@@ -31,7 +34,8 @@ specific to the implementation of `BackupStore` that the Mysos cluster uses.
 ### Response
 A JSON object with the following fields:
 
-- `cluster_password`: The password for accessing the MySQL instance (associated with `cluster_user`).
+- `cluster_password`: The password for accessing the MySQL instance (associated with
+`cluster_user`).
 - `cluster_url`: A URL to the ZooKeeper group for discovering the MySQL instances of this cluster.
 See the *Service Discovery* section below.
 

@@ -223,7 +223,8 @@ class TestScheduler(unittest.TestCase):
     RootMetrics().register_observable('scheduler', scheduler)
 
     scheduler.registered(self._driver, self._framework_id, object())
-    _, password = scheduler.create_cluster("cluster1", "mysql_user", 3)
+    scheduler.create_cluster(
+        "cluster1", "mysql_user", 3, cluster_password='test_password')
 
     sample = RootMetrics().sample()
     assert sample['scheduler.cluster_count'] == 1
@@ -231,7 +232,7 @@ class TestScheduler(unittest.TestCase):
     assert sample['scheduler.total_requested_disk_mb'] == DEFAULT_TASK_DISK.as_(Data.MB) * 3
     assert sample['scheduler.total_requested_cpus'] == DEFAULT_TASK_CPUS * 3
 
-    scheduler.delete_cluster("cluster1", password)
+    scheduler.delete_cluster("cluster1", 'test_password')
 
     sample = RootMetrics().sample()
     assert sample['scheduler.cluster_count'] == 0

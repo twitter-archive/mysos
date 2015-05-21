@@ -27,7 +27,14 @@ class FakeScheduler(object):
   def set_response(self, response):
     self._response = response
 
-  def create_cluster(self, cluster_name, cluster_user, num_nodes, size, backup_id=None):
+  def create_cluster(
+      self,
+      cluster_name,
+      cluster_user,
+      num_nodes,
+      size,
+      backup_id=None,
+      cluster_password=None):
     if self._exception:
       raise self._exception
     return self._response

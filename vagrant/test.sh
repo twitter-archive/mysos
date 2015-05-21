@@ -24,7 +24,8 @@ ${executable} create \
   --cluster_user=${cluster_user} \
   --cluster=${cluster_name} \
   --num_nodes=${num_nodes} \
-  --size='{"mem": "512mb", "disk": "3gb", "cpus": 1.0}'
+  --size='{"mem": "700mb", "disk": "3gb", "cpus": 1.0}' \
+  --cluster_password='testpasswd'
 
 echo "Finished creating the cluster, now deleting it"
 
