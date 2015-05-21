@@ -18,7 +18,8 @@ from mysos.scheduler.state import LocalStateProvider, MySQLCluster, Scheduler
 from kazoo.handlers.threading import SequentialThreadingHandler
 import mesos.interface.mesos_pb2 as mesos_pb2
 from twitter.common import log
-from twitter.common.quantity import Amount, Time
+from twitter.common.metrics import RootMetrics
+from twitter.common.quantity import Amount, Data, Time
 from zake.fake_client import FakeClient
 from zake.fake_storage import FakeStorage
 
@@ -203,3 +204,37 @@ class TestScheduler(unittest.TestCase):
     # a 'Filters' object.
     assert (self._driver.method_calls["declineOffer"][0][0][1].refuse_seconds ==
         INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION.as_(Time.SECONDS))
+
+  def test_scheduler_metrics(self):
+    scheduler_key = gen_encryption_key()
+
+    scheduler = MysosScheduler(
+      self._state,
+      self._state_provider,
+      self._framework_user,
+      "./executor.pex",
+      "cmd.sh",
+      self._zk_client,
+      self._zk_url,
+      Amount(5, Time.SECONDS),
+      "/etc/mysos/admin_keyfile.yml",
+      scheduler_key)
+
+    RootMetrics().register_observable('scheduler', scheduler)
+
+    scheduler.registered(self._driver, self._framework_id, object())
+    _, password = scheduler.create_cluster("cluster1", "mysql_user", 3)
+
+    sample = RootMetrics().sample()
+    assert sample['scheduler.cluster_count'] == 1
+    assert sample['scheduler.total_requested_mem_mb'] == DEFAULT_TASK_MEM.as_(Data.MB) * 3
+    assert sample['scheduler.total_requested_disk_mb'] == DEFAULT_TASK_DISK.as_(Data.MB) * 3
+    assert sample['scheduler.total_requested_cpus'] == DEFAULT_TASK_CPUS * 3
+
+    scheduler.delete_cluster("cluster1", password)
+
+    sample = RootMetrics().sample()
+    assert sample['scheduler.cluster_count'] == 0
+    assert sample['scheduler.total_requested_mem_mb'] == 0
+    assert sample['scheduler.total_requested_disk_mb'] == 0
+    assert sample['scheduler.total_requested_cpus'] == 0

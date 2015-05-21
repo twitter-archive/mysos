@@ -9,6 +9,7 @@ from mysos.scheduler.scheduler import MysosScheduler
 
 import pytest
 from webtest import AppError, TestApp
+from twitter.common.metrics import MetricSampler, RootMetrics
 
 
 MYSOS_MODULE = 'mysos.scheduler'
@@ -44,7 +45,8 @@ class TestHTTP(unittest.TestCase):
 
   def setUp(self):
     self._scheduler = FakeScheduler()
-    self._app = TestApp(MysosServer(self._scheduler, self.web_assets_dir).app)
+    self._app = TestApp(
+        MysosServer(self._scheduler, self.web_assets_dir, MetricSampler(RootMetrics())).app)
 
   def test_create_cluster_successful(self):
     response = ('test_cluster_url', 'passwordfortestcluster')

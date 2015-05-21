@@ -10,7 +10,7 @@ from twitter.common.http import HttpServer, route, static_file
 
 
 class MysosServer(HttpServer):
-  def __init__(self, scheduler, asset_dir):
+  def __init__(self, scheduler, asset_dir, metric_sampler):
     super(MysosServer, self).__init__()
     self._scheduler = scheduler
     self._asset_dir = asset_dir
@@ -19,6 +19,8 @@ class MysosServer(HttpServer):
     self._template_dir = os.path.join(self._asset_dir, 'templates')
 
     self._clusters_template = Template(filename=os.path.join(self._template_dir, 'clusters.html'))
+
+    self._metric_sampler = metric_sampler
 
   @route('/clusters/<clustername>', method=['POST'])
   def create(self, clustername):
@@ -72,3 +74,7 @@ class MysosServer(HttpServer):
   @route('/static/<filepath:path>', method=['GET'])
   def serve_static(self, filepath):
     return static_file(filepath, root=self._static_dir)
+
+  @route("/vars.json")
+  def serve_vars_json(self, var=None, value=None):
+    return self._metric_sampler.sample()
