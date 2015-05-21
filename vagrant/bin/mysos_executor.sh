@@ -9,8 +9,9 @@ virtualenv venv  # Create vent in the sandbox.
 
 # 'protobuf' is a a dependency of mesos.interface's but we install it separately because otherwise
 # 3.0.0-alpha is installed and it breaks the mesos.interface install.
-venv/bin/python venv/bin/pip install 'protobuf==2.6.1'
-venv/bin/python venv/bin/pip install --find-links /home/vagrant/mysos/deps mesos.native
-venv/bin/python venv/bin/pip install --pre --find-links . mysos[executor]
+venv/bin/python venv/bin/pip install --find-links /home/vagrant/mysos/deps \
+    'protobuf==2.6.1' mesos.native
+venv/bin/python venv/bin/pip install --pre --find-links /home/vagrant/mysos/deps --find-links . \
+    mysos[executor]
 
 venv/bin/python venv/bin/vagrant_mysos_executor

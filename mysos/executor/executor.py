@@ -1,4 +1,5 @@
 import json
+import traceback
 
 from mysos.common.decorators import logged
 
@@ -77,6 +78,7 @@ class MysosExecutor(Executor):
       self._send_update(task.task_id.value, mesos_pb2.TASK_FAILED)
     except Exception as e:
       log.error("Error occurred while executing the task: %s" % e)
+      log.error(traceback.format_exc())
       # Send TASK_LOST for unknown errors.
       self._send_update(task.task_id.value, mesos_pb2.TASK_LOST)
 
