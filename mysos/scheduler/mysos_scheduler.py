@@ -140,16 +140,14 @@ def proxy_main():
       dest='installer_args',
       default=None,
       help='Arguments for MySQL installer directly passed along to and parsed by the installer. '
-           'e.g., a serialized JSON string'
-  )
+           'e.g., a serialized JSON string')
 
   app.add_option(
       '--backup_store_args',
       dest='backup_store_args',
       default=None,
       help="Arguments for the store for MySQL backups. Its use and format are defined by the "
-           "backup store implementation. e.g., It can be a serialized JSON string"
-  )
+           "backup store implementation. e.g., It can be a serialized JSON string")
 
   app.add_option(
       '--framework_authentication_file',
@@ -157,8 +155,7 @@ def proxy_main():
       default=None,
       help="Path to the key file for authenticating the framework against Mesos master. Framework "
            "will fail to register with Mesos if authentication is required by Mesos and this "
-           "option is not provided"
-  )
+           "option is not provided")
 
   app.add_option(
       '--executor_source_prefix',
@@ -174,8 +171,7 @@ def proxy_main():
       '--verbose',
       dest='verbose',
       default=None,
-      help="Turn on verbose logging"
-  )
+      help="Turn on verbose logging")
 
   def main(args, options):
     log.info("Options in use: %s", options)
