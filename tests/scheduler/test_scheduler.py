@@ -209,16 +209,16 @@ class TestScheduler(unittest.TestCase):
     scheduler_key = gen_encryption_key()
 
     scheduler = MysosScheduler(
-      self._state,
-      self._state_provider,
-      self._framework_user,
-      "./executor.pex",
-      "cmd.sh",
-      self._zk_client,
-      self._zk_url,
-      Amount(5, Time.SECONDS),
-      "/etc/mysos/admin_keyfile.yml",
-      scheduler_key)
+        self._state,
+        self._state_provider,
+        self._framework_user,
+        "./executor.pex",
+        "cmd.sh",
+        self._zk_client,
+        self._zk_url,
+        Amount(5, Time.SECONDS),
+        "/etc/mysos/admin_keyfile.yml",
+        scheduler_key)
 
     RootMetrics().register_observable('scheduler', scheduler)
 
@@ -238,3 +238,28 @@ class TestScheduler(unittest.TestCase):
     assert sample['scheduler.total_requested_mem_mb'] == 0
     assert sample['scheduler.total_requested_disk_mb'] == 0
     assert sample['scheduler.total_requested_cpus'] == 0
+
+  def test_scheduler_delete_empty_cluster(self):
+    scheduler_key = gen_encryption_key()
+
+    scheduler = MysosScheduler(
+        self._state,
+        self._state_provider,
+        self._framework_user,
+        "./executor.pex",
+        "cmd.sh",
+        self._zk_client,
+        self._zk_url,
+        Amount(5, Time.SECONDS),
+        "/etc/mysos/admin_keyfile.yml",
+        scheduler_key)
+
+    scheduler.registered(self._driver, self._framework_id, object())
+    _, password = scheduler.create_cluster("cluster1", "mysql_user", 3)
+
+    assert len(scheduler._launchers) == 1
+
+    # Deleting the cluster before any offer comes in for launching any task.
+    scheduler.delete_cluster("cluster1", password)
+
+    assert len(scheduler._launchers) == 0

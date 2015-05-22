@@ -238,6 +238,11 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
       self._total_requested_disk_mb.write(
           self._total_requested_disk_mb.read() - cluster_info.total_disk_mb)
 
+      if launcher.terminated:
+        log.info("Deleting the launcher for cluster %s directly because the cluster has already "
+                 "terminated" % launcher.cluster_name)
+        self._delete_launcher(launcher)
+
       return get_cluster_path(self._discover_zk_url, cluster_name)
 
   @property
@@ -407,9 +412,13 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
       if launcher.terminated:
         log.info("Deleting the launcher for cluster %s because the cluster has terminated" %
                  launcher.cluster_name)
-        self._state.clusters.discard(launcher.cluster_name)
-        self._state_provider.dump_scheduler_state(self._state)
-        del self._launchers[launcher.cluster_name]
+        self._delete_launcher(launcher)
+
+  def _delete_launcher(self, launcher):
+    assert launcher.terminated
+    self._state.clusters.discard(launcher.cluster_name)
+    self._state_provider.dump_scheduler_state(self._state)
+    del self._launchers[launcher.cluster_name]
 
   @logged
   def frameworkMessage(self, driver, executorId, slaveId, message):
