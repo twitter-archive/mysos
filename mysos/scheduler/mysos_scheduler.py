@@ -168,7 +168,13 @@ def proxy_main():
            "to support metrics tracking by external utilities. The format of ExecutorInfo.source "
            "is '<prefix>.<cluster_name>.<server_id>'. This flag specifies the prefix to use in the "
            "'source' field. e.g., it can be '<availability_zone>.<mesos_cluster>'. There is no "
-           "preceding period if <prefix> is empty"
+           "preceding period if <prefix> is empty")
+
+  app.add_option(
+      '--verbose',
+      dest='verbose',
+      default=None,
+      help="Turn on verbose logging"
   )
 
   def main(args, options):
@@ -197,6 +203,9 @@ def proxy_main():
 
     if not options.scheduler_keypath:
       app.error('Must specify --scheduler_keypath')
+
+    if options.verbose:
+      LogOptions.set_stderr_log_level('google:DEBUG')
 
     try:
       election_timeout = parse_time(options.election_timeout)
