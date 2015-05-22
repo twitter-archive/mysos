@@ -52,6 +52,7 @@ setup(
         make_commons_requirement('http'),
         make_commons_requirement('lang'),
         make_commons_requirement('log'),
+        make_commons_requirement('metrics'),
         make_commons_requirement('quantity'),
         make_commons_requirement('zookeeper'),
     ],

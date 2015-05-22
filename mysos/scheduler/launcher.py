@@ -138,9 +138,15 @@ class MySQLClusterLauncher(object):
   @property
   def cluster_info(self):
     with self._lock:
-      ClusterInfo = namedtuple('ClusterInfo', ('name, user, num_nodes'))
+      ClusterInfo = namedtuple('ClusterInfo', [
+          'name', 'user', 'num_nodes', 'total_cpus', 'total_mem_mb', 'total_disk_mb'])
       return ClusterInfo(
-          name=self._cluster.name, user=self._cluster.user, num_nodes=self._cluster.num_nodes)
+          name=self._cluster.name,
+          user=self._cluster.user,
+          num_nodes=self._cluster.num_nodes,
+          total_cpus=self._cluster.cpus * self._cluster.num_nodes,
+          total_mem_mb=self._cluster.mem.as_(Data.MB) * self._cluster.num_nodes,
+          total_disk_mb=self._cluster.disk.as_(Data.MB) * self._cluster.num_nodes)
 
   def launch(self, offer):
     """

@@ -17,6 +17,7 @@ from twitter.common import app, log
 from twitter.common.exceptions import ExceptionalThread
 from twitter.common.http import HttpServer
 from twitter.common.log.options import LogOptions
+from twitter.common.metrics import MetricSampler, RootMetrics
 from twitter.common.quantity import Time
 from twitter.common.quantity.parse_simple import InvalidTime, parse_time
 import yaml
@@ -287,6 +288,8 @@ def proxy_main():
         executor_source_prefix=options.executor_source_prefix,
         framework_role=options.framework_role)
 
+    RootMetrics().register_observable('scheduler', scheduler)
+
     if fw_principal and fw_secret:
       cred = Credential(principal=fw_principal, secret=fw_secret)
       scheduler_driver = mesos.native.MesosSchedulerDriver(
@@ -302,8 +305,11 @@ def proxy_main():
 
     scheduler_driver.start()
 
+    metric_sampler = MetricSampler(RootMetrics())
+    metric_sampler.start()
+
     server = HttpServer()
-    server.mount_routes(MysosServer(scheduler, web_assets_dir))
+    server.mount_routes(MysosServer(scheduler, web_assets_dir, metric_sampler))
 
     et = ExceptionalThread(
         target=server.run, args=('0.0.0.0', options.api_port, 'cherrypy'))

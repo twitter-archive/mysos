@@ -17,6 +17,7 @@ import mesos.interface
 import mesos.interface.mesos_pb2 as mesos_pb2
 from twitter.common import log
 from twitter.common.collections.orderedset import OrderedSet
+from twitter.common.metrics import AtomicGauge, MutatorGauge, Observable
 from twitter.common.quantity import Amount, Data, Time
 from twitter.common.quantity.parse_simple import InvalidData, parse_data
 
@@ -31,7 +32,7 @@ DEFAULT_TASK_MEM = Amount(512, Data.MB)
 INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION = Amount(sys.maxint / 2, Time.NANOSECONDS)
 
 
-class MysosScheduler(mesos.interface.Scheduler):
+class MysosScheduler(mesos.interface.Scheduler, Observable):
 
   class Error(Exception): pass
 
@@ -115,6 +116,17 @@ class MysosScheduler(mesos.interface.Scheduler):
     self.connected = threading.Event()  # An event set when the scheduler is first connected to
                                         # Mesos. The scheduler tolerates later disconnections.
 
+    self._cluster_count = self.metrics.register(AtomicGauge('cluster_count', 0))
+
+    # Total resources requested by the scheduler's clients. When a cluster is created its resources
+    # are added to the total; when it's deleted its resources are subtracted from the total.
+    # NOTE: These are 'requested' resources that are independent of resources offered by Mesos or
+    # allocated to or used by Mysos tasks running on Mesos cluster.
+    self._total_requested_cpus = self.metrics.register(MutatorGauge('total_requested_cpus', 0.))
+    self._total_requested_mem_mb = self.metrics.register(MutatorGauge('total_requested_mem_mb', 0.))
+    self._total_requested_disk_mb = self.metrics.register(
+        MutatorGauge('total_requested_disk_mb', 0.))
+
   # --- Public interface. ---
   def create_cluster(self, cluster_name, cluster_user, num_nodes, size=None, backup_id=None):
     """
@@ -149,11 +161,19 @@ class MysosScheduler(mesos.interface.Scheduler):
       if not cluster_user:
         raise self.InvalidUser('Invalid user name: %s' % cluster_user)
 
-      if int(num_nodes) <= 0:
+      num_nodes = int(num_nodes)
+      if num_nodes <= 0:
         raise ValueError("Invalid number of cluster nodes: %s" % num_nodes)
 
       resources = parse_size(size)
       log.info("Requested resources per instance for cluster %s: %s" % (resources, cluster_name))
+
+      self._total_requested_cpus.write(
+          self._total_requested_cpus.read() + resources['cpus'] * num_nodes)
+      self._total_requested_mem_mb.write(
+          self._total_requested_mem_mb.read() + resources['mem'].as_(Data.MB) * num_nodes)
+      self._total_requested_disk_mb.write(
+          self._total_requested_disk_mb.read() + resources['disk'].as_(Data.MB) * num_nodes)
 
       self._state.clusters.add(cluster_name)
       self._state_provider.dump_scheduler_state(self._state)
@@ -164,7 +184,7 @@ class MysosScheduler(mesos.interface.Scheduler):
           cluster_name,
           cluster_user,
           self._password_box.encrypt(password),
-          int(num_nodes),
+          num_nodes,
           cpus=resources['cpus'],
           mem=resources['mem'],
           disk=resources['disk'],
@@ -190,6 +210,8 @@ class MysosScheduler(mesos.interface.Scheduler):
           executor_source_prefix=self._executor_source_prefix,
           framework_role=self._framework_role)
 
+      self._cluster_count.increment()
+
       return get_cluster_path(self._discover_zk_url, cluster_name), password
 
   def delete_cluster(self, cluster_name, password):
@@ -207,6 +229,14 @@ class MysosScheduler(mesos.interface.Scheduler):
       launcher = self._launchers[cluster_name]
       launcher.kill(password)
       log.info("Attempted to kill cluster %s" % cluster_name)
+
+      self._cluster_count.decrement()
+      cluster_info = launcher.cluster_info
+      self._total_requested_cpus.write(self._total_requested_cpus.read() - cluster_info.total_cpus)
+      self._total_requested_mem_mb.write(
+          self._total_requested_mem_mb.read() - cluster_info.total_mem_mb)
+      self._total_requested_disk_mb.write(
+          self._total_requested_disk_mb.read() - cluster_info.total_disk_mb)
 
       return get_cluster_path(self._discover_zk_url, cluster_name)
 
@@ -293,6 +323,16 @@ class MysosScheduler(mesos.interface.Scheduler):
           executor_environ=self._executor_environ,
           executor_source_prefix=self._executor_source_prefix,
           framework_role=self._framework_role)
+
+      # Recover metrics from restored state.
+      self._cluster_count.increment()
+
+      cluster_info = self._launchers[cluster.name].cluster_info
+      self._total_requested_cpus.write(self._total_requested_cpus.read() + cluster_info.total_cpus)
+      self._total_requested_mem_mb.write(
+          self._total_requested_mem_mb.read() + cluster_info.total_mem_mb)
+      self._total_requested_disk_mb.write(
+          self._total_requested_disk_mb.read() + cluster_info.total_disk_mb)
 
     log.info("Recovered %s clusters" % len(self._launchers))
 
@@ -414,7 +454,7 @@ def parse_size(size):
     try:
       resources_ = json.loads(size)
       resources = dict(
-        cpus=resources_['cpus'],
+        cpus=float(resources_['cpus']),
         mem=parse_data(resources_['mem']),
         disk=parse_data(resources_['disk']))
     except (TypeError, KeyError, ValueError, InvalidData):
