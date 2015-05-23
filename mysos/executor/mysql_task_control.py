@@ -166,33 +166,35 @@ class MySQLTaskControl(TaskControl):
   @synchronized
   def reparent(self, master_host, master_port, env=None):
     command = ("%(cmd)s %(master_host)s %(master_port)s %(slave_host)s %(slave_port)s "
-        "%(admin_user)s %(admin_password)s" % dict(
-            cmd=os.path.join(self._scripts_dir, "mysos_reparent.sh"),
-            master_host=master_host,
-            master_port=master_port,
-            slave_host=self._host,
-            slave_port=self._port,
-            admin_user=self._admin_username,
-            admin_password=self._admin_password))
+               "%(admin_user)s %(admin_password)s")
+    params = dict(
+        cmd=os.path.join(self._scripts_dir, "mysos_reparent.sh"),
+        master_host=master_host,
+        master_port=master_port,
+        slave_host=self._host,
+        slave_port=self._port,
+        admin_user=self._admin_username,
+        admin_password=self._admin_password)
 
-    log.info("Executing command: %s" % command)
-    subprocess.check_call(command, shell=True, env=env)
+    log.info("Executing command: %s" % (command % dict(params, admin_password="<redacted>")))
+    subprocess.check_call(command % params, shell=True, env=env)
 
   @synchronized
   def promote(self, env=None):
     command = ("%(cmd)s %(host)s %(port)s %(cluster_user)s %(password)s %(admin_user)s "
-        "%(admin_password)s" % dict(
-            cmd=os.path.join(self._scripts_dir, "mysos_promote_master.sh"),
-            host=self._host,
-            port=self._port,
-            cluster_user=self._cluster_user,
-            password=self._password,
-            admin_user=self._admin_username,
-            admin_password=self._admin_password))
+               "%(admin_password)s")
+    params = dict(
+        cmd=os.path.join(self._scripts_dir, "mysos_promote_master.sh"),
+        host=self._host,
+        port=self._port,
+        cluster_user=self._cluster_user,
+        password=self._password,
+        admin_user=self._admin_username,
+        admin_password=self._admin_password)
 
-    # TODO(jyx): Scrub the command log line to hide the password.
-    log.info("Executing command: %s" % command)
-    subprocess.check_call(command, shell=True, env=env)
+    log.info("Executing command: %s" % (
+        command % dict(params, password="<redacted>", admin_password="<redacted>")))
+    subprocess.check_call(command % params, shell=True, env=env)
 
   @synchronized
   def get_log_position(self, env=None):

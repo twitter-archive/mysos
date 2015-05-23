@@ -128,7 +128,14 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
         MutatorGauge('total_requested_disk_mb', 0.))
 
   # --- Public interface. ---
-  def create_cluster(self, cluster_name, cluster_user, num_nodes, size=None, backup_id=None):
+  def create_cluster(
+        self,
+        cluster_name,
+        cluster_user,
+        num_nodes,
+        size=None,
+        backup_id=None,
+        cluster_password=None):
     """
       :param cluster_name: Name of the cluster.
       :param cluster_user: The user account on MySQL server.
@@ -138,6 +145,10 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
                    given 'None' then app defaults are used.
       :param backup_id: The 'backup_id' of the backup to restore from. If None then Mysos starts an
                         empty instance.
+      :param cluster_password: The password used for accessing MySQL instances in the cluster as
+                               well as deleting the cluster from Mysos. If None then Mysos generates
+                               one for the cluster. In either case the password is sent back as
+                               part of the return value.
 
       :return: a tuple of the following:
         - ZooKeeper URL for this Mysos cluster that can be used to resolve MySQL cluster info.
@@ -178,12 +189,15 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
       self._state.clusters.add(cluster_name)
       self._state_provider.dump_scheduler_state(self._state)
 
+      if not cluster_password:
+        log.info("Generating password for cluster %s" % cluster_name)
+        cluster_password = gen_password()
+
       # Return the plaintext version to the client but store the encrypted version.
-      password = gen_password()
       cluster = MySQLCluster(
           cluster_name,
           cluster_user,
-          self._password_box.encrypt(password),
+          self._password_box.encrypt(cluster_password),
           num_nodes,
           cpus=resources['cpus'],
           mem=resources['mem'],
@@ -212,7 +226,7 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
 
       self._cluster_count.increment()
 
-      return get_cluster_path(self._discover_zk_url, cluster_name), password
+      return get_cluster_path(self._discover_zk_url, cluster_name), cluster_password
 
   def delete_cluster(self, cluster_name, password):
     """

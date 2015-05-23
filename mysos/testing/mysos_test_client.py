@@ -21,33 +21,29 @@ LogOptions.disable_disk_logging()
 LogOptions.set_stderr_log_level('google:INFO')
 
 
-app.add_option(
-    '--api_host',
-    dest='api_host',
-    help='Host for the HTTP API server')
-
-
-app.add_option(
-    '--api_port',
-    dest='api_port',
-    type='int',
-    help='Port for the HTTP API server')
-
-
-app.add_option(
-    '--cluster',
-    dest='cluster_name',
-    help='Name of the MySQL cluster to create')
-
-
-app.add_option(
-    '--password_file',
-    dest='password_file',
-    default=os.path.join(tempfile.gettempdir(), 'mysos', 'mysos_test_client', 'password_file'),
-    help="Path to the file for persisting the cluster password for testing purposes")
-
-
 def proxy_main():
+  app.add_option(
+      '--api_host',
+      dest='api_host',
+      help='Host for the HTTP API server')
+
+  app.add_option(
+      '--api_port',
+      dest='api_port',
+      type='int',
+      help='Port for the HTTP API server')
+
+  app.add_option(
+      '--cluster',
+      dest='cluster_name',
+      help='Name of the MySQL cluster to create')
+
+  app.add_option(
+      '--password_file',
+      dest='password_file',
+      default=os.path.join(tempfile.gettempdir(), 'mysos', 'mysos_test_client', 'password_file'),
+      help="Path to the file for persisting the cluster password for testing purposes")
+
   @app.command
   @app.command_option(
       '--num_nodes',
@@ -69,6 +65,11 @@ def proxy_main():
       help="The size of instances in the cluster as a JSON dictionary of 'cpus', 'mem', 'disk'. "
            "'mem' and 'disk' are specified with data size units: kb, mb, gb, etc. If given 'None'"
            "then app defaults are used.")
+  @app.command_option(
+      '--cluster_password',
+      dest='cluster_password',
+      help="The password used for accessing MySQL instances in the cluster as well as deleting "
+           "the cluster from Mysos.")
   def create(args, options):
     validate_common_options(options)
 
@@ -82,8 +83,9 @@ def proxy_main():
     values = dict(
         num_nodes=int(options.num_nodes),
         cluster_user=options.cluster_user,
-        size=options.size if options.size else '',
-        backup_id=options.backup_id if options.backup_id else '')
+        size=options.size if options.size else '',  # 'urlencode()' doesn't accept None.
+        backup_id=options.backup_id if options.backup_id else '',
+        cluster_password=options.cluster_password if options.cluster_password else '')
 
     req = urllib2.Request(url, urllib.urlencode(values))
     try:

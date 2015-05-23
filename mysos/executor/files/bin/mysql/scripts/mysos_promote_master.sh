@@ -3,7 +3,7 @@
 # Promote the MySQL slave to be a master.
 #
 
-set -uex
+set -ue  # No -x due to passwords in the commands.
 
 host=$1
 port=$2
