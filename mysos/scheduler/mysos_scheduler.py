@@ -140,16 +140,14 @@ def proxy_main():
       dest='installer_args',
       default=None,
       help='Arguments for MySQL installer directly passed along to and parsed by the installer. '
-           'e.g., a serialized JSON string'
-  )
+           'e.g., a serialized JSON string')
 
   app.add_option(
       '--backup_store_args',
       dest='backup_store_args',
       default=None,
       help="Arguments for the store for MySQL backups. Its use and format are defined by the "
-           "backup store implementation. e.g., It can be a serialized JSON string"
-  )
+           "backup store implementation. e.g., It can be a serialized JSON string")
 
   app.add_option(
       '--framework_authentication_file',
@@ -157,8 +155,7 @@ def proxy_main():
       default=None,
       help="Path to the key file for authenticating the framework against Mesos master. Framework "
            "will fail to register with Mesos if authentication is required by Mesos and this "
-           "option is not provided"
-  )
+           "option is not provided")
 
   app.add_option(
       '--executor_source_prefix',
@@ -168,8 +165,13 @@ def proxy_main():
            "to support metrics tracking by external utilities. The format of ExecutorInfo.source "
            "is '<prefix>.<cluster_name>.<server_id>'. This flag specifies the prefix to use in the "
            "'source' field. e.g., it can be '<availability_zone>.<mesos_cluster>'. There is no "
-           "preceding period if <prefix> is empty"
-  )
+           "preceding period if <prefix> is empty")
+
+  app.add_option(
+      '--verbose',
+      dest='verbose',
+      default=None,
+      help="Turn on verbose logging")
 
   def main(args, options):
     log.info("Options in use: %s", options)
@@ -197,6 +199,9 @@ def proxy_main():
 
     if not options.scheduler_keypath:
       app.error('Must specify --scheduler_keypath')
+
+    if options.verbose:
+      LogOptions.set_stderr_log_level('google:DEBUG')
 
     try:
       election_timeout = parse_time(options.election_timeout)
