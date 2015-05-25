@@ -21,6 +21,7 @@ Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/L
 ## Requirements
  * Python 2.7
  * Mesos Python bindings
+ * You might need packages "python-dev" and "libffi-dev"
 
 ## Building
 [![Build status on Travis CI](https://api.travis-ci.org/twitter/mysos.svg)](https://travis-ci.org/twitter/mysos)
