@@ -223,6 +223,10 @@ class TestScheduler(unittest.TestCase):
     RootMetrics().register_observable('scheduler', scheduler)
 
     scheduler.registered(self._driver, self._framework_id, object())
+
+    sample = RootMetrics().sample()
+    assert sample['scheduler.framework_registered'] == 1
+
     scheduler.create_cluster(
         "cluster1", "mysql_user", 3, cluster_password='test_password')
 
@@ -231,6 +235,21 @@ class TestScheduler(unittest.TestCase):
     assert sample['scheduler.total_requested_mem_mb'] == DEFAULT_TASK_MEM.as_(Data.MB) * 3
     assert sample['scheduler.total_requested_disk_mb'] == DEFAULT_TASK_DISK.as_(Data.MB) * 3
     assert sample['scheduler.total_requested_cpus'] == DEFAULT_TASK_CPUS * 3
+
+    scheduler.resourceOffers(self._driver, [self._offer])
+
+    status = mesos_pb2.TaskStatus()
+    status.state = mesos_pb2.TASK_RUNNING
+    status.slave_id.value = self._offer.slave_id.value
+    status.task_id.value = 'mysos-cluster1-0'
+
+    scheduler.statusUpdate(self._driver, status)
+
+    status.state = mesos_pb2.TASK_FAILED
+    scheduler.statusUpdate(self._driver, status)
+
+    sample = RootMetrics().sample()
+    assert sample['scheduler.tasks_failed'] == 1
 
     scheduler.delete_cluster("cluster1", 'test_password')
 

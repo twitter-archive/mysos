@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from datetime import datetime
 import json
 import posixpath
 import random
@@ -17,7 +18,7 @@ import mesos.interface
 import mesos.interface.mesos_pb2 as mesos_pb2
 from twitter.common import log
 from twitter.common.collections.orderedset import OrderedSet
-from twitter.common.metrics import AtomicGauge, MutatorGauge, Observable
+from twitter.common.metrics import AtomicGauge, LambdaGauge, MutatorGauge, Observable
 from twitter.common.quantity import Amount, Data, Time
 from twitter.common.quantity.parse_simple import InvalidData, parse_data
 
@@ -40,6 +41,8 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
   class ClusterNotFound(Error): pass
   class InvalidUser(Error): pass
   class ServiceUnavailable(Error): pass
+
+  class Metrics(object): pass  # Used as a namespace nested in MysosScheduler for metrics.
 
   def __init__(
       self,
@@ -115,17 +118,37 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
     self.stopped = threading.Event()  # An event set when the scheduler is stopped.
     self.connected = threading.Event()  # An event set when the scheduler is first connected to
                                         # Mesos. The scheduler tolerates later disconnections.
+    self._setup_metrics()
 
-    self._cluster_count = self.metrics.register(AtomicGauge('cluster_count', 0))
+  def _setup_metrics(self):
+    self._metrics = self.Metrics()
+
+    self._metrics.cluster_count = self.metrics.register(AtomicGauge('cluster_count', 0))
 
     # Total resources requested by the scheduler's clients. When a cluster is created its resources
     # are added to the total; when it's deleted its resources are subtracted from the total.
     # NOTE: These are 'requested' resources that are independent of resources offered by Mesos or
     # allocated to or used by Mysos tasks running on Mesos cluster.
-    self._total_requested_cpus = self.metrics.register(MutatorGauge('total_requested_cpus', 0.))
-    self._total_requested_mem_mb = self.metrics.register(MutatorGauge('total_requested_mem_mb', 0.))
-    self._total_requested_disk_mb = self.metrics.register(
+    self._metrics.total_requested_cpus = self.metrics.register(
+        MutatorGauge('total_requested_cpus', 0.))
+    self._metrics.total_requested_mem_mb = self.metrics.register(
+        MutatorGauge('total_requested_mem_mb', 0.))
+    self._metrics.total_requested_disk_mb = self.metrics.register(
         MutatorGauge('total_requested_disk_mb', 0.))
+
+    # 1: registered; 0: not registered.
+    self._metrics.framework_registered = self.metrics.register(
+        MutatorGauge('framework_registered', 0))
+
+    self._startup_time = datetime.utcnow()
+    self._metrics.uptime = self.metrics.register(
+        LambdaGauge('uptime', lambda: (datetime.utcnow() - self._startup_time).total_seconds()))
+
+    # Counters for tasks in terminal states.
+    self._metrics.tasks_lost = self.metrics.register(AtomicGauge('tasks_lost', 0))
+    self._metrics.tasks_finished = self.metrics.register(AtomicGauge('tasks_finished', 0))
+    self._metrics.tasks_failed = self.metrics.register(AtomicGauge('tasks_failed', 0))
+    self._metrics.tasks_killed = self.metrics.register(AtomicGauge('tasks_killed', 0))
 
   # --- Public interface. ---
   def create_cluster(
@@ -179,12 +202,12 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
       resources = parse_size(size)
       log.info("Requested resources per instance for cluster %s: %s" % (resources, cluster_name))
 
-      self._total_requested_cpus.write(
-          self._total_requested_cpus.read() + resources['cpus'] * num_nodes)
-      self._total_requested_mem_mb.write(
-          self._total_requested_mem_mb.read() + resources['mem'].as_(Data.MB) * num_nodes)
-      self._total_requested_disk_mb.write(
-          self._total_requested_disk_mb.read() + resources['disk'].as_(Data.MB) * num_nodes)
+      self._metrics.total_requested_cpus.write(
+          self._metrics.total_requested_cpus.read() + resources['cpus'] * num_nodes)
+      self._metrics.total_requested_mem_mb.write(
+          self._metrics.total_requested_mem_mb.read() + resources['mem'].as_(Data.MB) * num_nodes)
+      self._metrics.total_requested_disk_mb.write(
+          self._metrics.total_requested_disk_mb.read() + resources['disk'].as_(Data.MB) * num_nodes)
 
       self._state.clusters.add(cluster_name)
       self._state_provider.dump_scheduler_state(self._state)
@@ -224,7 +247,7 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
           executor_source_prefix=self._executor_source_prefix,
           framework_role=self._framework_role)
 
-      self._cluster_count.increment()
+      self._metrics.cluster_count.increment()
 
       return get_cluster_path(self._discover_zk_url, cluster_name), cluster_password
 
@@ -244,13 +267,14 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
       launcher.kill(password)
       log.info("Attempted to kill cluster %s" % cluster_name)
 
-      self._cluster_count.decrement()
+      self._metrics.cluster_count.decrement()
       cluster_info = launcher.cluster_info
-      self._total_requested_cpus.write(self._total_requested_cpus.read() - cluster_info.total_cpus)
-      self._total_requested_mem_mb.write(
-          self._total_requested_mem_mb.read() - cluster_info.total_mem_mb)
-      self._total_requested_disk_mb.write(
-          self._total_requested_disk_mb.read() - cluster_info.total_disk_mb)
+      self._metrics.total_requested_cpus.write(
+          self._metrics.total_requested_cpus.read() - cluster_info.total_cpus)
+      self._metrics.total_requested_mem_mb.write(
+          self._metrics.total_requested_mem_mb.read() - cluster_info.total_mem_mb)
+      self._metrics.total_requested_disk_mb.write(
+          self._metrics.total_requested_disk_mb.read() - cluster_info.total_disk_mb)
 
       if launcher.terminated:
         log.info("Deleting the launcher for cluster %s directly because the cluster has already "
@@ -298,6 +322,8 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
       self._stop()
       return
 
+    self._metrics.framework_registered.write(1)
+
     self.connected.set()
 
   def _recover(self):
@@ -344,26 +370,29 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
           framework_role=self._framework_role)
 
       # Recover metrics from restored state.
-      self._cluster_count.increment()
+      self._metrics.cluster_count.increment()
 
       cluster_info = self._launchers[cluster.name].cluster_info
-      self._total_requested_cpus.write(self._total_requested_cpus.read() + cluster_info.total_cpus)
-      self._total_requested_mem_mb.write(
-          self._total_requested_mem_mb.read() + cluster_info.total_mem_mb)
-      self._total_requested_disk_mb.write(
-          self._total_requested_disk_mb.read() + cluster_info.total_disk_mb)
+      self._metrics.total_requested_cpus.write(
+          self._metrics.total_requested_cpus.read() + cluster_info.total_cpus)
+      self._metrics.total_requested_mem_mb.write(
+          self._metrics.total_requested_mem_mb.read() + cluster_info.total_mem_mb)
+      self._metrics.total_requested_disk_mb.write(
+          self._metrics.total_requested_disk_mb.read() + cluster_info.total_disk_mb)
 
     log.info("Recovered %s clusters" % len(self._launchers))
 
   @logged
   def reregistered(self, driver, masterInfo):
     self._driver = driver
+
+    self._metrics.framework_registered.write(1)
     self.connected.set()
     # TODO(jyx): Reconcile tasks.
 
   @logged
   def disconnected(self, driver):
-    pass
+    self._metrics.framework_registered.write(0)
 
   @logged
   def resourceOffers(self, driver, offers):
@@ -424,6 +453,18 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
       except MySQLClusterLauncher.Error as e:
         log.error("Status update failed due to launcher error: %s" % e.message)
         self._stop()
+
+      # Update metrics.
+      # TODO(xujyan): This doesn't rule out duplicates, etc. We can consider updating these metrics
+      # in the launcher.
+      if status.state == mesos_pb2.TASK_FINISHED:
+        self._metrics.tasks_finished.increment()
+      elif status.state == mesos_pb2.TASK_FAILED:
+        self._metrics.tasks_failed.increment()
+      elif status.state == mesos_pb2.TASK_KILLED:
+        self._metrics.tasks_killed.increment()
+      elif status.state == mesos_pb2.TASK_LOST:
+        self._metrics.tasks_lost.increment()
 
       if launcher.terminated:
         log.info("Deleting the launcher for cluster %s because the cluster has terminated" %
