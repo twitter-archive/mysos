@@ -434,6 +434,7 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
     assert launcher.terminated
     self._state.clusters.discard(launcher.cluster_name)
     self._state_provider.dump_scheduler_state(self._state)
+    self._launchers[launcher.cluster_name].stop()
     del self._launchers[launcher.cluster_name]
 
   @logged

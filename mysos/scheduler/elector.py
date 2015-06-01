@@ -172,8 +172,9 @@ class MySQLMasterElector(ExceptionalThread):
       return
 
     self._master_callback(self._master)  # Invoke the callback from the elector thread.
-    log.info("Stopping the elector thread for cluster %s because the election has completed" %
-        self._cluster_name)
+    log.info(
+        "Stopping the elector thread for cluster %s (epoch %s) because the election has completed" %
+        (self._cluster_name, self._epoch))
 
   def _elect(self, timedout=False):
     """
