@@ -194,6 +194,9 @@ class TestScheduler(unittest.TestCase):
         "/etc/mysos/admin_keyfile.yml",
         gen_encryption_key(),
         framework_role='mysos')  # Require 'mysos' but the resources are in '*'.
+
+    RootMetrics().register_observable('scheduler', scheduler1)
+
     scheduler1.registered(self._driver, self._framework_id, object())
     scheduler1.create_cluster("cluster1", "mysql_user", 3)
     scheduler1.resourceOffers(self._driver, [self._offer])
@@ -204,6 +207,9 @@ class TestScheduler(unittest.TestCase):
     # a 'Filters' object.
     assert (self._driver.method_calls["declineOffer"][0][0][1].refuse_seconds ==
         INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION.as_(Time.SECONDS))
+
+    sample = RootMetrics().sample()
+    assert sample['scheduler.offers_incompatible_role'] == 1
 
   def test_scheduler_metrics(self):
     scheduler_key = gen_encryption_key()
@@ -237,6 +243,9 @@ class TestScheduler(unittest.TestCase):
     assert sample['scheduler.total_requested_cpus'] == DEFAULT_TASK_CPUS * 3
 
     scheduler.resourceOffers(self._driver, [self._offer])
+    sample = RootMetrics().sample()
+    assert sample['scheduler.resource_offers'] == 1
+    assert sample['scheduler.tasks_launched'] == 1
 
     status = mesos_pb2.TaskStatus()
     status.state = mesos_pb2.TASK_RUNNING

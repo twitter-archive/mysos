@@ -150,6 +150,16 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
     self._metrics.tasks_failed = self.metrics.register(AtomicGauge('tasks_failed', 0))
     self._metrics.tasks_killed = self.metrics.register(AtomicGauge('tasks_killed', 0))
 
+    self._metrics.resource_offers = self.metrics.register(AtomicGauge('resource_offers', 0))
+    self._metrics.offers_incompatible_role = self.metrics.register(
+        AtomicGauge('offers_incompatible_role', 0))
+
+    self._metrics.tasks_launched = self.metrics.register(AtomicGauge('tasks_launched', 0))
+
+    # 'offers_unused' are due to idle scheduler or resources don't fit, i.e.,
+    # 'resource_offers' - 'tasks_launched' - 'offers_incompatible_role'.
+    self._metrics.offers_unused = self.metrics.register(AtomicGauge('offers_unused', 0))
+
   # --- Public interface. ---
   def create_cluster(
         self,
@@ -396,7 +406,8 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
 
   @logged
   def resourceOffers(self, driver, offers):
-    log.info('Got %d resource offers' % len(offers))
+    log.debug('Got %d resource offers' % len(offers))
+    self._metrics.resource_offers.add(len(offers))
 
     with self._lock:
       # Current scheduling algorithm: randomly pick an offer and loop through the list of launchers
@@ -413,29 +424,33 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
           try:
             task_id, _ = launcher.launch(offer)
           except MySQLClusterLauncher.IncompatibleRoleError as e:
+            log.info("Declining offer %s for %s because '%s'" % (
+                offer.id.value, INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION, e))
             # This "error" is not severe and we expect this to occur frequently only when Mysos
             # first joins the cluster. For a running Mesos cluster this should be somewhat rare
             # because we refuse the offer "forever".
             filters = mesos_pb2.Filters()
             filters.refuse_seconds = INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION.as_(Time.SECONDS)
+
+            self._metrics.offers_incompatible_role.increment()
             break  # No need to check with other launchers.
           if task_id:
+            self._metrics.tasks_launched.increment()
+
             self._tasks[task_id] = launcher.cluster_name
             # No need to check with other launchers. 'filters' remains unset.
             break
         if task_id:
           break  # Some launcher has used this offer. Move on to the next one.
 
-        if filters:
-          log.info("Declining offer %s for %s because '%s'" % (
-              offer.id.value, INCOMPATIBLE_ROLE_OFFER_REFUSE_DURATION, e))
-        else:
-          log.info("Declining offer %s because no launcher accepted this offer" % offer.id.value)
+        if not filters:
+          log.debug("Declining unused offer %s because no launcher accepted this offer: %s" % (
+              offer.id.value, offer))
           # Mesos scheduler Python binding doesn't deal with filters='None' properly.
           # See https://issues.apache.org/jira/browse/MESOS-2567.
           filters = mesos_pb2.Filters()
+          self._metrics.offers_unused.increment()
 
-        log.debug(offer)
         self._driver.declineOffer(offer.id, filters)
 
   @logged
