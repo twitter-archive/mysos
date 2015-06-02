@@ -531,6 +531,11 @@ class MySQLClusterLauncher(object):
         log.info("Received framework message '%s' from task %s (%s) when there is no pending "
             "election" % (message, task_id, slave_id))
 
+  def stop(self):
+    """Called when the launcher is being shut down (due to removal of the cluster)."""
+    if self._elector:
+      self._elector.abort()
+
 
 # --- Utility methods. ---
 def create_resources(cpus, mem, disk, ports, role='*'):
