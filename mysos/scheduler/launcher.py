@@ -18,6 +18,10 @@ from twitter.common.zookeeper.serverset.endpoint import Endpoint, ServiceInstanc
 
 EXECUTOR_NAME = 'mysos.executor'
 
+EXECUTOR_CPUS_EPSILON = 0.01
+EXECUTOR_MEM_EPSILON = Amount(32, Data.MB)
+EXECUTOR_DISK_EPSILON = Amount(1, Data.MB)
+
 
 class MySQLClusterLauncher(object):
   """
@@ -287,6 +291,13 @@ class MySQLClusterLauncher(object):
     task.executor.source = '.'.join(source)
     task.executor.command.value = self._executor_cmd
 
+    task.executor.resources.extend(create_resources(
+        EXECUTOR_CPUS_EPSILON,
+        EXECUTOR_MEM_EPSILON,
+        EXECUTOR_DISK_EPSILON,
+        ports=[],
+        role=self._framework_role))
+
     if self._executor_environ:  # Could be 'None' since it's an optional argument.
       executor_environ_ = json.loads(self._executor_environ)
       if executor_environ_:
@@ -316,9 +327,12 @@ class MySQLClusterLauncher(object):
         'backup_id': self._cluster.backup_id,
     })
 
-    resources = create_resources(
-        task_cpus, task_mem, task_disk, set([task_port]), role=self._framework_role)
-    task.resources.extend(resources)
+    task.resources.extend(create_resources(
+        task_cpus - EXECUTOR_CPUS_EPSILON,
+        task_mem - EXECUTOR_MEM_EPSILON,
+        task_disk - EXECUTOR_DISK_EPSILON,
+        set([task_port]),
+        role=self._framework_role))
 
     return task
 
@@ -558,16 +572,20 @@ def create_resources(cpus, mem, disk, ports, role='*'):
   disk_resources.role = role
   disk_resources.scalar.value = disk.as_(Data.MB)
 
-  ports_resources = mesos_pb2.Resource()
-  ports_resources.name = 'ports'
-  ports_resources.type = mesos_pb2.Value.RANGES
-  ports_resources.role = role
-  for port in ports:
-    port_range = ports_resources.ranges.range.add()
-    port_range.begin = port
-    port_range.end = port
+  resources = [cpus_resources, mem_resources, disk_resources]
 
-  return [cpus_resources, mem_resources, disk_resources, ports_resources]
+  if ports:
+    ports_resources = mesos_pb2.Resource()
+    ports_resources.name = 'ports'
+    ports_resources.type = mesos_pb2.Value.RANGES
+    ports_resources.role = role
+    for port in ports:
+      port_range = ports_resources.ranges.range.add()
+      port_range.begin = port
+      port_range.end = port
+    resources += [ports_resources]
+
+  return resources
 
 
 def is_terminal(state):
