@@ -39,6 +39,7 @@ class MysosTaskRunnerProvider(TaskRunnerProvider):
       installer = self._installer_provider.from_task(task, sandbox)
       backup_store = self._backup_store_provider.from_task(task, sandbox)
     except (TaskControl.Error, PackageInstaller.Error) as e:
+      kazoo.stop()  # Kazoo needs to be cleaned up. See kazoo/issues/217.
       raise TaskError(e.message)
 
     state_manager = StateManager(sandbox, backup_store)
@@ -96,6 +97,7 @@ class MysosTaskRunner(TaskRunner):
     self.demoted = threading.Event()
     self.master = Queue.Queue()  # Set when a master change is detected.
 
+    self._kazoo = kazoo
     self._listener = ClusterListener(
         kazoo,
         cluster_root,
@@ -146,6 +148,13 @@ class MysosTaskRunner(TaskRunner):
     self._exited.set()
 
   def stop(self, timeout=10):
+    try:
+      return self._stop(timeout)
+    finally:
+      self._kazoo.stop()
+      log.info("Runner cleaned up")
+
+  def _stop(self, timeout):
     """
       Stop the runner and wait for its thread (and the sub-processes) to exit.
 
