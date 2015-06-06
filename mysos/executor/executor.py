@@ -126,7 +126,7 @@ class MysosExecutor(Executor):
   @logged
   def killTask(self, driver, taskId):
     # Killing the task also kills the executor because there is one task per executor.
-    log.info("Asked to kill task %s" % taskId)
+    log.info("Asked to kill task %s" % taskId.value)
     self._killed = True
     self._kill()
 
