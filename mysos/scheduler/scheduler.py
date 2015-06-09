@@ -10,7 +10,9 @@ import sys
 from mysos.common.cluster import get_cluster_path
 from mysos.common.decorators import logged
 
-from .launcher import MySQLClusterLauncher
+from .launcher import (
+    EXECUTOR_CPUS_EPSILON, EXECUTOR_DISK_EPSILON, EXECUTOR_MEM_EPSILON, MySQLClusterLauncher
+)
 from .password import gen_password, PasswordBox
 from .state import MySQLCluster, Scheduler, StateProvider
 
@@ -210,6 +212,15 @@ class MysosScheduler(mesos.interface.Scheduler, Observable):
         raise ValueError("Invalid number of cluster nodes: %s" % num_nodes)
 
       resources = parse_size(size)
+
+      if (resources['cpus'] <= EXECUTOR_CPUS_EPSILON or
+          resources['mem'] <= EXECUTOR_MEM_EPSILON or
+          resources['disk'] <= EXECUTOR_DISK_EPSILON):
+        raise ValueError(
+            "Instance 'size' too small. It should be larger than what Mysos executor consumes: "
+            "(cpus, mem, disk) = (%s, %s, %s)" % (
+                EXECUTOR_CPUS_EPSILON, EXECUTOR_MEM_EPSILON, EXECUTOR_DISK_EPSILON))
+
       log.info("Requested resources per instance for cluster %s: %s" % (resources, cluster_name))
 
       self._metrics.total_requested_cpus.write(
