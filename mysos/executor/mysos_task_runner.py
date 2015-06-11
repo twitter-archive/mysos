@@ -148,6 +148,15 @@ class MysosTaskRunner(TaskRunner):
     self._exited.set()
 
   def stop(self, timeout=10):
+    with self._lock:
+      # stop() could be called by multiple threads. Locking so we only stop the runner once.
+      if self._stopping:
+        log.warn("The runner is already stopping/stopped")
+        return False
+      else:
+        log.info("Stopping runner")
+        self._stopping = True
+
     try:
       return self._stop(timeout)
     finally:
@@ -163,17 +172,10 @@ class MysosTaskRunner(TaskRunner):
       :return: True if an active runner is stopped, False if the runner is not started or already
                stopping/stopped.
     """
-    if not self._started:
-      log.warn("Cannot stop the runner because it's not started")
-      return False
-
-    if self._stopping:
-      log.warn("The runner is already stopping/stopped")
-      return False
-
     with self._lock:
-      log.info("Stopping runner")
-      self._stopping = True
+      if not self._started:
+        log.warn("Cannot stop the runner because it's not started")
+        return False
 
       if not self._popen:
         log.info("The runner task did not start successfully so no need to kill it")
@@ -198,6 +200,8 @@ class MysosTaskRunner(TaskRunner):
         except OSError as e:
           log.info("The sub-processes are already terminated: %s" % e)
           return False
+    else:
+      return True
 
     log.info("Waiting for process to terminate due to SIGKILL")
     if not self._exited.wait(timeout=timeout):
