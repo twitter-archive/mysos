@@ -52,7 +52,7 @@ class FakeTaskControl(TaskControl):
     if self._process:
       return
 
-    self._process = subprocess.Popen(self._mysqld, shell=True, preexec_fn=os.setsid)
+    self._process = subprocess.Popen(self._mysqld, shell=True, preexec_fn=os.setpgrp)
     subprocess.check_call(self._start_cmd, shell=True)
     return self._process
 
