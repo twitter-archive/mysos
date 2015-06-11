@@ -78,7 +78,6 @@ setup(
     entry_points={
         'console_scripts': [
             'mysos_scheduler=mysos.scheduler.mysos_scheduler:proxy_main [scheduler]',
-            'mysos_executor=mysos.executor.mysos_executor:proxy_main [executor]',
             'vagrant_mysos_executor=mysos.executor.testing.vagrant_mysos_executor:proxy_main [executor]',
             'mysos_test_client=mysos.testing.mysos_test_client:proxy_main [test_client]',
         ],
