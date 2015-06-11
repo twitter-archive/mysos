@@ -2,7 +2,7 @@ import getpass
 import os
 import posixpath
 
-from mysos.common.cluster import get_cluster_path, wait_for_master
+from mysos.common.cluster import get_cluster_path, wait_for_master, wait_for_termination
 from mysos.scheduler.password import gen_encryption_key
 from mysos.scheduler.scheduler import MysosScheduler
 from mysos.scheduler.state import LocalStateProvider, Scheduler
@@ -73,11 +73,20 @@ def test_scheduler_runs():
   # Wait until the scheduler is connected and becomes available.
   assert scheduler.connected.wait(30)
 
-  scheduler.create_cluster(cluster_name, "mysql_user", num_nodes)
+  scheduler.create_cluster(cluster_name, "mysql_user", num_nodes, cluster_password="passwd")
 
   # A slave is promoted to be the master.
   deadline(
       lambda: wait_for_master(
+          get_cluster_path(posixpath.join(zk_url, 'discover'), cluster_name),
+          zk_client),
+      Amount(40, Time.SECONDS))
+
+  scheduler.delete_cluster(cluster_name, password="passwd")
+
+  # A slave is promoted to be the master.
+  deadline(
+      lambda: wait_for_termination(
           get_cluster_path(posixpath.join(zk_url, 'discover'), cluster_name),
           zk_client),
       Amount(40, Time.SECONDS))
