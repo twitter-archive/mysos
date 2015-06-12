@@ -7,4 +7,4 @@ Mysos is an Apache Mesos framework for running MySQL instances. It dramatically 
  * High availability through automatic MySQL master failover
  * An elastic solution that allows users to easily scale up and down a MySQL cluster by changing the number of slave instances
 
-Mysos is also being [proposed as a project in the Apache Incubator](https://wiki.apache.org/incubator/MysosProposal).
+Mysos has been [accepted into the Apache Incubator](http://incubator.apache.org/projects/mysos.html).

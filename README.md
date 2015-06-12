@@ -7,13 +7,16 @@ Mysos is an Apache Mesos framework for running MySQL instances. It dramatically 
  * High availability through automatic MySQL master failover
  * An elastic solution that allows users to easily scale up and down a MySQL cluster by changing the number of slave instances
  
-Mysos is also being [proposed as a project in the Apache Incubator](https://wiki.apache.org/incubator/MysosProposal).
+Mysos has been [accepted into the Apache Incubator](http://incubator.apache.org/projects/mysos.html).
 
 ## Documentation
 A [user guide](docs/user-guide.md) is available. Documentation improvements are always welcome, so please send patches our way.
 
 ## Getting Involved
 The project maintains an IRC channel, `#mysos` on irc.freenode.net
+
+### Mailing Lists
+- [Development Mailing List](mailto:dev-subscribe@mysos.incubator.apache.org)
 
 ## License
 Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
