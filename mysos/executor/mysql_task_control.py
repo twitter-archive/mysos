@@ -150,7 +150,7 @@ class MySQLTaskControl(TaskControl):
             conf_file=self._conf_file,
             buffer_pool_size=self._buffer_pool_size))
     log.info("Executing command: %s" % command)
-    self._process = subprocess.Popen(command, shell=True, env=env)
+    self._process = subprocess.Popen(command, shell=True, env=env, preexec_fn=os.setpgrp)
 
     # There is a delay before mysqld becomes available to accept requests. Wait for it.
     command = "%(cmd)s %(pid_file)s %(port)s %(timeout)s" % dict(
