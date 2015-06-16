@@ -12,6 +12,7 @@ from mesos.interface.mesos_pb2 import DRIVER_STOPPED, FrameworkInfo
 from twitter.common import log
 from twitter.common.concurrent import deadline
 from twitter.common.dirutil import safe_mkdtemp
+from twitter.common.metrics import RootMetrics
 from twitter.common.quantity import Amount, Time
 from zake.fake_client import FakeClient
 from zake.fake_storage import FakeStorage
@@ -64,6 +65,8 @@ def test_scheduler_runs():
       "/fakepath",
       gen_encryption_key())
 
+  RootMetrics().register_observable('scheduler', scheduler)
+
   scheduler_driver = mesos.native.MesosSchedulerDriver(
       scheduler,
       framework_info,
@@ -84,11 +87,14 @@ def test_scheduler_runs():
 
   scheduler.delete_cluster(cluster_name, password="passwd")
 
-  # A slave is promoted to be the master.
+  # The cluster is deleted from ZooKeeper.
   deadline(
       lambda: wait_for_termination(
           get_cluster_path(posixpath.join(zk_url, 'discover'), cluster_name),
           zk_client),
       Amount(40, Time.SECONDS))
+
+  sample = RootMetrics().sample()
+  assert sample['scheduler.tasks_killed'] == 1
 
   assert scheduler_driver.stop() == DRIVER_STOPPED
