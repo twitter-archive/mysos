@@ -1,3 +1,4 @@
+[![Stories in Ready](https://badge.waffle.io/twitter/mysos.png?label=ready&title=Ready)](https://waffle.io/twitter/mysos)
 # Mysos
 Mysos is an Apache Mesos framework for running MySQL instances. It dramatically simplifies the management of a MySQL cluster and is designed to offer:
 
