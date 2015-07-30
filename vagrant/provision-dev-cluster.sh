@@ -5,16 +5,21 @@
 # Install dependencies.
 export DEBIAN_FRONTEND=noninteractive
 aptitude update -q
-aptitude install -q -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
-    curl \  # We use curl --silent to download pakcages.
-    libcurl3-dev \  # Mesos requirement.
-    libsasl2-dev \  # Mesos requirement.
-    python-dev \
-    zookeeper \
-    mysql-server-5.6 \
-    libmysqlclient-dev \
-    python-virtualenv \
+
+packagelist=(
+    curl # We use curl --silent to download pakcages.
+    libcurl3-dev # Mesos requirement.
+    libsasl2-dev # Mesos requirement.
+    python-dev
+    zookeeper
+    mysql-server-5.6
+    libmysqlclient-dev
+    python-virtualenv
     libffi-dev  # For pynacl.
+)
+
+aptitude install -q -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" ${packagelist[@]}
+
 
 # Fix up Ubuntu mysql-server-5.6 issue: mysql_install_db looks for this file even if we don't need
 # it.
